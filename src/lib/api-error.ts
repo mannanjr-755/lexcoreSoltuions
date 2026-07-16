@@ -1,0 +1,58 @@
+import { NextResponse } from "next/server";
+import { ZodError } from "zod";
+import { logger } from "@/lib/logger";
+
+export function handleApiError(error: unknown) {
+  if (error instanceof ZodError) {
+    const first = error.issues[0];
+    const detail = first ? `${first.path.join(".")}: ${first.message}` : "Invalid request data";
+    logger.warn("Zod validation error", { detail, issues: error.issues });
+    return NextResponse.json(
+      { message: detail, errors: error.flatten() },
+      { status: 400 }
+    );
+  }
+
+  // MongoDB duplicate key
+  const mongoErr = error as { code?: number; keyPattern?: Record<string, number>; message?: string };
+  if (mongoErr?.code === 11000) {
+    const fields = mongoErr.keyPattern ? Object.keys(mongoErr.keyPattern).join(", ") : "record";
+    return NextResponse.json(
+      { message: `Duplicate entry. A record with the same ${fields} already exists.` },
+      { status: 409 }
+    );
+  }
+
+  if (error instanceof Error) {
+    if (error.message === "Unauthorized") {
+      return NextResponse.json({ message: "Unauthorized" }, { status: 401 });
+    }
+    if (error.message === "Forbidden") {
+      return NextResponse.json({ message: "Forbidden" }, { status: 403 });
+    }
+    if (error.message.startsWith("Invalid environment configuration")) {
+      logger.error(error.message);
+      return NextResponse.json(
+        { message: "Server configuration error. Check environment variables." },
+        { status: 500 }
+      );
+    }
+    if (error.message.includes("SMTP")) {
+      return NextResponse.json({ message: error.message }, { status: 503 });
+    }
+
+    logger.error(error.message, { stack: error.stack });
+    return NextResponse.json({ message: error.message }, { status: 500 });
+  }
+
+  logger.error("Unknown server error", { error: String(error) });
+  return NextResponse.json({ message: "Internal server error" }, { status: 500 });
+}
+
+export function unauthorized() {
+  return NextResponse.json({ message: "Unauthorized" }, { status: 401 });
+}
+
+export function forbidden() {
+  return NextResponse.json({ message: "Forbidden" }, { status: 403 });
+}

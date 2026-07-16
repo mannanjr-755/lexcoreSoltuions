@@ -1,0 +1,165 @@
+@import "tailwindcss";
+
+:root {
+  /* Lexcore Solutions Brand */
+  --gold: #d4af37;
+  --gold-luxury: #c9a227;
+  --gold-light: #e6c86e;
+  --navy: #08142d;
+  --navy-secondary: #102348;
+  --navy-accent: #1e3a8a;
+  --bg-primary: #f8fafc;
+  --bg-secondary: #ffffff;
+  --sidebar-bg: #ffffff;
+  --card-bg: #ffffff;
+  --text-primary: #0f172a;
+  --text-muted: #64748b;
+  --border: #e2e8f0;
+  --hover: #f1f5f9;
+  --success: #22c55e;
+  --danger: #ef4444;
+  --warning: #f59e0b;
+  --radius: 16px;
+}
+
+html,
+body {
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  min-height: 100%;
+}
+
+body {
+  font-family: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
+  background-image:
+    radial-gradient(ellipse 70% 45% at 0% -8%, rgba(212, 175, 55, 0.08), transparent),
+    radial-gradient(ellipse 55% 40% at 100% 0%, rgba(8, 20, 45, 0.04), transparent);
+  background-attachment: fixed;
+}
+
+.font-display {
+  font-family: var(--font-space), var(--font-inter), sans-serif;
+}
+
+.font-mono-num {
+  font-family: var(--font-jetbrains), ui-monospace, monospace;
+}
+
+.brand-gradient-text,
+.gold-gradient-text {
+  background: linear-gradient(135deg, #c9a227 0%, #d4af37 45%, #e6c86e 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+.navy-gradient-text {
+  background: linear-gradient(135deg, #08142d 0%, #1e3a8a 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+.glass-card,
+.lexcore-card,
+.surface-panel {
+  background: #ffffff;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+
+.premium-shadow {
+  box-shadow:
+    0 1px 2px rgba(8, 20, 45, 0.04),
+    0 10px 28px -14px rgba(8, 20, 45, 0.12);
+}
+
+.card-gradient-gold {
+  background: linear-gradient(145deg, rgba(212, 175, 55, 0.1), #ffffff);
+}
+
+.card-gradient-blue,
+.card-gradient-cyan {
+  background: linear-gradient(145deg, rgba(30, 58, 138, 0.06), #ffffff);
+}
+
+.card-gradient-green {
+  background: linear-gradient(145deg, rgba(34, 197, 94, 0.07), #ffffff);
+}
+
+.card-gradient-red {
+  background: linear-gradient(145deg, rgba(239, 68, 68, 0.07), #ffffff);
+}
+
+.card-gradient-amber {
+  background: linear-gradient(145deg, rgba(245, 158, 11, 0.08), #ffffff);
+}
+
+.card-gradient-purple {
+  background: linear-gradient(145deg, rgba(30, 58, 138, 0.05), #ffffff);
+}
+
+.sidebar-active {
+  background: linear-gradient(90deg, rgba(212, 175, 55, 0.16), rgba(212, 175, 55, 0.04));
+  color: #c9a227;
+  box-shadow: inset 3px 0 0 #d4af37;
+}
+
+.floating-sidebar {
+  background: #ffffff;
+  border: 1px solid var(--border);
+  box-shadow:
+    0 12px 40px -20px rgba(8, 20, 45, 0.16),
+    0 0 0 1px rgba(8, 20, 45, 0.02);
+}
+
+.lexcore-banner {
+  background: linear-gradient(135deg, #08142d 0%, #102348 55%, #1e3a8a 100%);
+}
+
+.btn-ripple {
+  position: relative;
+  overflow: hidden;
+}
+
+.btn-ripple::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(circle at var(--x, 50%) var(--y, 50%), rgba(255, 255, 255, 0.35), transparent 40%);
+  opacity: 0;
+  transition: opacity 0.35s ease;
+}
+
+.btn-ripple:active::after {
+  opacity: 1;
+}
+
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 999px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
+}
+
+html.dark,
+html.light {
+  --bg-primary: #f8fafc;
+  --bg-secondary: #ffffff;
+  --sidebar-bg: #ffffff;
+  --card-bg: #ffffff;
+  --text-primary: #0f172a;
+  --text-muted: #64748b;
+  --border: #e2e8f0;
+}

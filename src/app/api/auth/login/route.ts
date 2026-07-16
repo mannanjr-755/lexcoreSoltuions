@@ -1,0 +1,177 @@
+import { NextResponse } from "next/server";
+import { z } from "zod";
+import { connectDb } from "@/lib/db";
+import { UserModel } from "@/models/User";
+import { LoginHistoryModel } from "@/models/LoginHistory";
+import { signAccessToken, signRefreshToken } from "@/lib/jwt";
+import { setAuthCookies } from "@/lib/cookies";
+import { handleApiError } from "@/lib/api-error";
+import { getClientInfo, logActivity } from "@/lib/activity";
+import { rateLimit } from "@/lib/rate-limit";
+import { comparePassword } from "@/lib/bcrypt";
+import { ensureSuperAdmin } from "@/lib/ensure-admin";
+import { LOGIN_LOCK_DURATION_MS, LOGIN_LOCK_THRESHOLD } from "@/types/auth";
+import { logger } from "@/lib/logger";
+
+const loginSchema = z.object({
+  email: z
+    .string({ error: "Email is required" })
+    .trim()
+    .email("Enter a valid email address"),
+  password: z
+    .string({ error: "Password is required" })
+    .min(8, "Password must be at least 8 characters"),
+  rememberMe: z
+    .union([z.boolean(), z.literal("true"), z.literal("false"), z.literal("on"), z.null()])
+    .optional()
+    .transform((value) => value === true || value === "true" || value === "on")
+});
+
+export async function POST(req: Request) {
+  try {
+    const { ipAddress, userAgent, browser } = getClientInfo(req);
+    const limit = rateLimit(`login:${ipAddress}`, 20, 60_000);
+    if (!limit.allowed) {
+      return NextResponse.json({ message: "Too many login attempts. Try again later." }, { status: 429 });
+    }
+
+    let body: unknown;
+    try {
+      body = await req.json();
+    } catch {
+      return NextResponse.json({ message: "Invalid request body" }, { status: 400 });
+    }
+
+    const parsed = loginSchema.safeParse(body);
+    if (!parsed.success) {
+      const first = parsed.error.issues[0];
+      return NextResponse.json(
+        {
+          message: first?.message ?? "Invalid email or password format",
+          errors: parsed.error.flatten()
+        },
+        { status: 400 }
+      );
+    }
+
+    await connectDb();
+    await ensureSuperAdmin();
+
+    const email = parsed.data.email.toLowerCase();
+    const user = await UserModel.findOne({ email });
+
+    if (!user) {
+      return NextResponse.json({ message: "Account not found. Check your email address." }, { status: 401 });
+    }
+
+    if (user.role !== "super_admin") {
+      await LoginHistoryModel.create({
+        userId: user._id,
+        ipAddress,
+        userAgent,
+        browser,
+        success: false,
+        failureReason: "Only Super Admin can login"
+      });
+      return NextResponse.json({ message: "Access denied. Only Super Admin can login." }, { status: 403 });
+    }
+
+    if (!user.isActive) {
+      return NextResponse.json({ message: "Account is inactive. Contact support." }, { status: 403 });
+    }
+
+    if (user.lockedUntil && user.lockedUntil > new Date()) {
+      const minutesLeft = Math.ceil((user.lockedUntil.getTime() - Date.now()) / 60000);
+      return NextResponse.json(
+        { message: `Account locked. Try again in ${minutesLeft} minute(s).` },
+        { status: 423 }
+      );
+    }
+
+    const isValid = await comparePassword(parsed.data.password, user.passwordHash);
+    if (!isValid) {
+      user.failedLoginAttempts = (user.failedLoginAttempts ?? 0) + 1;
+      if (user.failedLoginAttempts >= LOGIN_LOCK_THRESHOLD) {
+        user.lockedUntil = new Date(Date.now() + LOGIN_LOCK_DURATION_MS);
+        user.failedLoginAttempts = 0;
+      }
+      await user.save();
+
+      await LoginHistoryModel.create({
+        userId: user._id,
+        ipAddress,
+        userAgent,
+        browser,
+        success: false,
+        failureReason: "Invalid password"
+      });
+
+      await logActivity({
+        userId: user._id.toString(),
+        userName: user.fullName,
+        action: "failed_login",
+        description: `Failed login attempt for ${user.email}`,
+        ipAddress,
+        userAgent,
+        browser
+      });
+
+      return NextResponse.json({ message: "Incorrect password." }, { status: 401 });
+    }
+
+    user.failedLoginAttempts = 0;
+    user.lockedUntil = null;
+    user.lastLoginAt = new Date();
+    user.lastLoginIp = ipAddress;
+    await user.save();
+
+    await LoginHistoryModel.create({
+      userId: user._id,
+      ipAddress,
+      userAgent,
+      browser,
+      success: true
+    });
+
+    await logActivity({
+      userId: user._id.toString(),
+      userName: user.fullName,
+      action: "login",
+      description: "Super Admin logged in",
+      ipAddress,
+      userAgent,
+      browser
+    });
+
+    const payload = {
+      sub: user._id.toString(),
+      role: user.role,
+      email: user.email
+    };
+
+    const rememberMe = parsed.data.rememberMe;
+    const accessToken = signAccessToken(payload, rememberMe);
+    const refreshToken = signRefreshToken(payload, rememberMe);
+
+    const response = NextResponse.json({
+      success: true,
+      message: "Login successful",
+      redirectTo: "/dashboard",
+      user: {
+        id: user._id.toString(),
+        email: user.email,
+        role: user.role,
+        fullName: user.fullName,
+        profilePhoto: user.profilePhoto,
+        lastLoginAt: user.lastLoginAt
+      }
+    });
+
+    setAuthCookies(response, { accessToken, refreshToken }, rememberMe);
+    response.headers.set("Cache-Control", "no-store");
+    logger.info("Super Admin login successful", { email: user.email });
+    return response;
+  } catch (error) {
+    return handleApiError(error);
+  }
+}

@@ -1,0 +1,61 @@
+{
+  "name": "lexcore-erp-crm",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Lexcore Solutions Enterprise ERP + CRM",
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "eslint .",
+    "typecheck": "tsc --noEmit",
+    "seed": "node -e \"fetch('http://localhost:3000/api/setup/seed',{method:'POST'}).then(r=>r.json()).then(console.log)\""
+  },
+  "keywords": [
+    "erp",
+    "crm",
+    "nextjs",
+    "mongodb",
+    "enterprise"
+  ],
+  "author": "Lexcore Solutions",
+  "license": "ISC",
+  "dependencies": {
+    "@hookform/resolvers": "^5.4.0",
+    "@tanstack/react-query": "^5.101.2",
+    "@types/nodemailer": "^8.0.1",
+    "axios": "^1.18.1",
+    "bcryptjs": "^3.0.3",
+    "class-variance-authority": "^0.7.1",
+    "cloudinary": "^2.10.0",
+    "clsx": "^2.1.1",
+    "framer-motion": "^12.42.2",
+    "jsonwebtoken": "^9.0.3",
+    "jspdf": "^4.2.1",
+    "lucide-react": "^1.24.0",
+    "mongoose": "^9.7.4",
+    "next": "^15.5.20",
+    "nodemailer": "^9.0.3",
+    "qrcode": "^1.5.4",
+    "react": "^19.2.7",
+    "react-dom": "^19.2.7",
+    "react-hook-form": "^7.81.0",
+    "recharts": "^3.9.2",
+    "tailwind-merge": "^3.6.0",
+    "xlsx": "^0.18.5",
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "@tailwindcss/postcss": "^4.3.2",
+    "@types/jsonwebtoken": "^9.0.10",
+    "@types/node": "^26.1.1",
+    "@types/react": "^19.2.17",
+    "@types/react-dom": "^19.2.3",
+    "autoprefixer": "^10.5.3",
+    "eslint": "^8.57.1",
+    "eslint-config-next": "^15.5.2",
+    "postcss": "^8.5.19",
+    "tailwindcss": "^4.3.2",
+    "typescript": "^6.0.3"
+  }
+}
