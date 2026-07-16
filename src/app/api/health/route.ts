@@ -10,14 +10,25 @@ export async function GET() {
       process.env.DATABASE_URL || process.env.POSTGRES_PRISMA_URL || process.env.POSTGRES_URL
     );
 
-    // Lazy import so missing env fails with our clearer Prisma helper message
     const { prisma } = await import("@/lib/prisma");
     await prisma.$queryRaw`SELECT 1`;
 
+    const tables = await prisma.$queryRaw<Array<{ tablename: string }>>`
+      SELECT tablename FROM pg_tables WHERE schemaname = 'public' ORDER BY tablename
+    `;
+    const names = tables.map((t) => t.tablename);
+    const usersExists = names.includes("users");
+
     return NextResponse.json({
-      status: "ok",
+      status: usersExists ? "ok" : "schema_missing",
       postgresql: "connected",
       databaseUrlConfigured: hasDatabaseUrl,
+      usersTableExists: usersExists,
+      tableCount: names.length,
+      tables: names,
+      hint: usersExists
+        ? undefined
+        : "Redeploy so Netlify runs prisma migrate deploy, then POST /api/setup/seed",
       timestamp: new Date().toISOString()
     });
   } catch (error) {

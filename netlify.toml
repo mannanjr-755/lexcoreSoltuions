@@ -1,10 +1,10 @@
 [build]
+  # migrate deploy creates public.users and all other tables on Neon before Next.js builds
   command = "npm run build"
   publish = ".next"
 
 [build.environment]
   NODE_VERSION = "20"
-  # Ensure Prisma CLI is available even if Netlify omits optional tooling
   NPM_FLAGS = "--include=dev"
 
 [[plugins]]
