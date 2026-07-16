@@ -27,13 +27,27 @@ const envSchema = z.object({
 
 export type AppEnv = z.infer<typeof envSchema>;
 
+function stripWrappingQuotes(value: unknown) {
+  if (typeof value !== "string") return value;
+  const trimmed = value.trim();
+  if (
+    (trimmed.startsWith('"') && trimmed.endsWith('"')) ||
+    (trimmed.startsWith("'") && trimmed.endsWith("'"))
+  ) {
+    return trimmed.slice(1, -1).trim();
+  }
+  return trimmed;
+}
+
 let cachedEnv: AppEnv | null = null;
 
 export function getEnv(): AppEnv {
   if (cachedEnv) return cachedEnv;
 
   const parsed = envSchema.safeParse({
-    DATABASE_URL: process.env.DATABASE_URL,
+    DATABASE_URL: stripWrappingQuotes(
+      process.env.DATABASE_URL ?? process.env.POSTGRES_PRISMA_URL ?? process.env.POSTGRES_URL
+    ),
     JWT_ACCESS_SECRET: process.env.JWT_ACCESS_SECRET,
     JWT_REFRESH_SECRET: process.env.JWT_REFRESH_SECRET,
     JWT_OTP_SECRET: process.env.JWT_OTP_SECRET ?? process.env.JWT_ACCESS_SECRET,

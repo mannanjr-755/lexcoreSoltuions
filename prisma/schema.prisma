@@ -1,6 +1,8 @@
 // Lexcore Solutions ERP/CRM — Prisma schema (Neon PostgreSQL)
 generator client {
-  provider = "prisma-client-js"
+  provider      = "prisma-client-js"
+  // native = local/dev; rhel-openssl-3.0.x = Netlify AWS Lambda (Amazon Linux 2023)
+  binaryTargets = ["native", "rhel-openssl-3.0.x"]
 }
 
 datasource db {

@@ -11,6 +11,9 @@ import { ensureSuperAdmin } from "@/lib/ensure-admin";
 import { LOGIN_LOCK_DURATION_MS, LOGIN_LOCK_THRESHOLD } from "@/types/auth";
 import { logger } from "@/lib/logger";
 
+export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
+
 const loginSchema = z.object({
   email: z
     .string({ error: "Email is required" })
