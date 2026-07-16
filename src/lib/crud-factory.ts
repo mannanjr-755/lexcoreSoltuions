@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
-import type { Model } from "mongoose";
 import type { z } from "zod";
+import { Prisma } from "@prisma/client";
 import { handleApiError, unauthorized } from "@/lib/api-error";
 import { getSession } from "@/lib/auth";
 import { getClientInfo, logActivity } from "@/lib/activity";
@@ -11,18 +11,21 @@ import {
   purgeArchivedDocuments,
   removeDocument,
   removeManyDocuments,
-  updateDocument
+  updateDocument,
+  type Delegate
 } from "@/repositories/crud.repository";
 
 type CrudConfig = {
-  model: Model<any>;
   entity: string;
+  delegate: Delegate;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   schema: z.ZodTypeAny & { partial?: () => z.ZodTypeAny };
   searchFields: string[];
-  populate?: string | string[];
+  include?: Record<string, unknown>;
+  hasArchived?: boolean;
   transformCreate?: (data: Record<string, unknown>, sessionId: string) => Record<string, unknown>;
   transformUpdate?: (data: Record<string, unknown>) => Record<string, unknown>;
+  mapRow?: (row: Record<string, unknown>) => Record<string, unknown>;
 };
 
 function parseListParams(req: Request) {
@@ -43,27 +46,25 @@ export function createCrudHandlers(config: CrudConfig) {
       const session = await getSession();
       if (!session) return unauthorized();
 
-      // Remove legacy soft-deleted rows permanently so they never linger in MongoDB
-      await purgeArchivedDocuments(config.model);
+      if (config.hasArchived !== false) {
+        await purgeArchivedDocuments(config.delegate);
+      }
 
       const params = parseListParams(req);
-      const extraMatch: Record<string, unknown> = {};
-      // Archived filter kept only for backward compat; archived docs are purged above
       if (params.archived === "1") {
         return NextResponse.json({ data: [], total: 0 });
       }
 
-      const result = await listDocuments(
-        config.model,
-        {
-          ...params,
-          searchFields: config.searchFields,
-          extraMatch
-        },
-        config.populate
-      );
+      const result = await listDocuments(config.delegate, {
+        ...params,
+        searchFields: config.searchFields,
+        include: config.include
+      });
 
-      return NextResponse.json(result);
+      return NextResponse.json({
+        ...result,
+        data: config.mapRow ? result.data.map((row) => config.mapRow!(row)) : result.data
+      });
     } catch (error) {
       return handleApiError(error);
     }
@@ -76,13 +77,16 @@ export function createCrudHandlers(config: CrudConfig) {
       const body = await req.json();
 
       if (body?.action === "duplicate" && typeof body.id === "string") {
-        const duplicated = await duplicateDocument(config.model, body.id, body.overrides ?? {});
+        const duplicated = await duplicateDocument(config.delegate, body.id, body.overrides ?? {});
         if (!duplicated) return NextResponse.json({ message: "Record not found" }, { status: 404 });
         return NextResponse.json(duplicated, { status: 201 });
       }
 
-      if (body?.action === "bulkUpdate" && Array.isArray(body.ids)) {
-        await config.model.updateMany({ _id: { $in: body.ids } }, body.data ?? {});
+      if (body?.action === "bulkUpdate" && Array.isArray(body.ids) && config.delegate.updateMany) {
+        await config.delegate.updateMany({
+          where: { id: { in: body.ids } },
+          data: body.data ?? {}
+        });
         return NextResponse.json({ message: "Updated", count: body.ids.length });
       }
 
@@ -93,9 +97,9 @@ export function createCrudHandlers(config: CrudConfig) {
 
       let payload = parsed.data as Record<string, unknown>;
       if (config.transformCreate) payload = config.transformCreate(payload, session.id);
-      // Never create as archived
       if ("isArchived" in payload) payload.isArchived = false;
-      const created = await createDocument(config.model, payload);
+
+      const created = await createDocument(config.delegate, payload);
 
       const { ipAddress, userAgent, browser } = getClientInfo(req);
       await logActivity({
@@ -103,7 +107,7 @@ export function createCrudHandlers(config: CrudConfig) {
         userName: session.fullName,
         action: `${config.entity}_created`,
         entity: config.entity,
-        entityId: String((created as { _id: unknown })._id),
+        entityId: String((created as { _id?: string; id?: string })?._id ?? (created as { id?: string })?.id),
         description: `${config.entity} created`,
         ipAddress,
         userAgent,
@@ -126,7 +130,7 @@ export function createCrudHandlers(config: CrudConfig) {
         return NextResponse.json({ message: "No IDs provided" }, { status: 400 });
       }
 
-      const result = await removeManyDocuments(config.model, ids);
+      const result = await removeManyDocuments(config.delegate, ids);
 
       const { ipAddress, userAgent, browser } = getClientInfo(req);
       await logActivity({
@@ -134,7 +138,7 @@ export function createCrudHandlers(config: CrudConfig) {
         userName: session.fullName,
         action: `${config.entity}_bulk_deleted`,
         entity: config.entity,
-        description: `Permanently deleted ${result.deletedCount ?? ids.length} ${config.entity}(s) from MongoDB`,
+        description: `Permanently deleted ${result.count} ${config.entity}(s) from PostgreSQL`,
         ipAddress,
         userAgent,
         browser
@@ -142,7 +146,7 @@ export function createCrudHandlers(config: CrudConfig) {
 
       return NextResponse.json({
         message: "Records permanently deleted",
-        deletedCount: result.deletedCount ?? 0
+        deletedCount: result.count
       });
     } catch (error) {
       return handleApiError(error);
@@ -154,15 +158,14 @@ export function createCrudHandlers(config: CrudConfig) {
       const session = await getSession();
       if (!session) return unauthorized();
       const { id } = await ctx.params;
-      await connectSafe();
-      let q = config.model.findById(id);
-      if (config.populate) {
-        const fields = Array.isArray(config.populate) ? config.populate : [config.populate];
-        for (const field of fields) q = q.populate(field);
-      }
-      const doc = await q.lean();
+      const doc = await config.delegate.findUnique({
+        where: { id },
+        include: config.include
+      });
       if (!doc) return NextResponse.json({ message: "Record not found" }, { status: 404 });
-      return NextResponse.json(doc);
+      const { withMongoId, serializeNested } = await import("@/lib/serialize");
+      const serialized = withMongoId(serializeNested(doc));
+      return NextResponse.json(config.mapRow ? config.mapRow(serialized as Record<string, unknown>) : serialized);
     } catch (error) {
       return handleApiError(error);
     }
@@ -175,15 +178,14 @@ export function createCrudHandlers(config: CrudConfig) {
       const { id } = await ctx.params;
       const body = await req.json();
 
-      // Legacy archive/restore actions now permanently delete (no soft-hide)
       if (body?.action === "archive") {
-        const deleted = await removeDocument(config.model, id);
+        const deleted = await removeDocument(config.delegate, id);
         if (!deleted) return NextResponse.json({ message: "Record not found" }, { status: 404 });
         return NextResponse.json({ message: "Record permanently deleted", deleted: true });
       }
       if (body?.action === "restore") {
         return NextResponse.json(
-          { message: "Restore is unavailable. Soft-delete has been removed; use Create to add records." },
+          { message: "Restore is unavailable. Soft-delete has been removed." },
           { status: 400 }
         );
       }
@@ -199,10 +201,9 @@ export function createCrudHandlers(config: CrudConfig) {
 
       let payload = parsed.data as Record<string, unknown>;
       if (config.transformUpdate) payload = config.transformUpdate(payload);
-      // Prevent soft-hide via updates
       if ("isArchived" in payload) delete payload.isArchived;
 
-      const updated = await updateDocument(config.model, id, payload);
+      const updated = await updateDocument(config.delegate, id, payload);
       if (!updated) return NextResponse.json({ message: "Record not found" }, { status: 404 });
       return NextResponse.json(updated);
     } catch (error) {
@@ -216,7 +217,7 @@ export function createCrudHandlers(config: CrudConfig) {
       if (!session) return unauthorized();
       const { id } = await ctx.params;
 
-      const deleted = await removeDocument(config.model, id);
+      const deleted = await removeDocument(config.delegate, id);
       if (!deleted) {
         return NextResponse.json({ message: "Record not found" }, { status: 404 });
       }
@@ -228,7 +229,7 @@ export function createCrudHandlers(config: CrudConfig) {
         action: `${config.entity}_deleted`,
         entity: config.entity,
         entityId: id,
-        description: `${config.entity} permanently deleted from MongoDB`,
+        description: `${config.entity} permanently deleted from PostgreSQL`,
         ipAddress,
         userAgent,
         browser
@@ -247,7 +248,6 @@ export function createCrudHandlers(config: CrudConfig) {
   return { GET, POST, DELETE, GET_ONE, PATCH, DELETE_ONE };
 }
 
-async function connectSafe() {
-  const { connectDb } = await import("@/lib/db");
-  await connectDb();
+export function isPrismaUniqueError(error: unknown): error is Prisma.PrismaClientKnownRequestError {
+  return error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002";
 }

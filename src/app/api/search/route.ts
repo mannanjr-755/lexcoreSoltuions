@@ -1,10 +1,5 @@
 import { NextResponse } from "next/server";
-import { connectDb } from "@/lib/db";
-import { CustomerModel } from "@/models/Customer";
-import { ProjectModel } from "@/models/Project";
-import { EmployeeModel } from "@/models/Employee";
-import { PaymentModel } from "@/models/Payment";
-import { ExpenseModel } from "@/models/Expense";
+import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/auth";
 import { handleApiError, unauthorized } from "@/lib/api-error";
 
@@ -19,21 +14,14 @@ export async function GET(req: Request) {
       return NextResponse.json({ results: [] });
     }
 
-    await connectDb();
-    const regex = { $regex: q, $options: "i" };
+    const contains = { contains: q, mode: "insensitive" as const };
 
     const [customers, projects, employees, payments, expenses] = await Promise.all([
-      CustomerModel.find({ $or: [{ name: regex }, { email: regex }, { company: regex }] })
-        .limit(5)
-        .select("name email company customerId")
-        .lean(),
-      ProjectModel.find({ name: regex }).limit(5).select("name status progress").lean(),
-      EmployeeModel.find({ $or: [{ fullName: regex }, { email: regex }, { employeeId: regex }] })
-        .limit(5)
-        .select("fullName email employeeId department")
-        .lean(),
-      PaymentModel.find({ invoiceNumber: regex }).limit(5).select("invoiceNumber grandTotal status").lean(),
-      ExpenseModel.find({ title: regex }).limit(5).select("title amount category").lean()
+      prisma.customer.findMany({ where: { OR: [{ name: contains }, { email: contains }, { company: contains }] }, take: 5, select: { id: true, name: true, email: true, company: true, customerId: true } }),
+      prisma.project.findMany({ where: { name: contains }, take: 5, select: { id: true, name: true, status: true, progress: true } }),
+      prisma.employee.findMany({ where: { OR: [{ fullName: contains }, { email: contains }, { employeeId: contains }] }, take: 5, select: { id: true, fullName: true, email: true, employeeId: true, department: true } }),
+      prisma.payment.findMany({ where: { invoiceNumber: contains }, take: 5, select: { id: true, invoiceNumber: true, grandTotal: true, status: true } }),
+      prisma.expense.findMany({ where: { title: contains }, take: 5, select: { id: true, title: true, amount: true, category: true } })
     ]);
 
     return NextResponse.json({

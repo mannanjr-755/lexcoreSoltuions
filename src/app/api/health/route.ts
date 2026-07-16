@@ -1,14 +1,14 @@
 import { NextResponse } from "next/server";
-import { connectDb, isDbHealthy } from "@/lib/db";
+import { prisma } from "@/lib/prisma";
 import { handleApiError } from "@/lib/api-error";
 
 export async function GET() {
   try {
-    await connectDb();
-    const healthy = await isDbHealthy();
+    await prisma.$queryRaw`SELECT 1`;
+    const healthy = true;
     return NextResponse.json({
       status: healthy ? "ok" : "degraded",
-      mongodb: healthy ? "connected" : "disconnected",
+      postgresql: healthy ? "connected" : "disconnected",
       timestamp: new Date().toISOString()
     });
   } catch (error) {

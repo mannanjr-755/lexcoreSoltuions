@@ -1,10 +1,10 @@
-import { DepartmentModel } from "@/models/Department";
+import { prisma } from "@/lib/prisma";
 import { departmentSchema } from "@/validators/modules.schema";
 import { createCrudHandlers } from "@/lib/crud-factory";
 
 const handlers = createCrudHandlers({
-  model: DepartmentModel,
   entity: "department",
+  delegate: prisma.department,
   schema: departmentSchema,
   searchFields: ["name", "code"]
 });

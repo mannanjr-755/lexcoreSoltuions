@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { ZodError } from "zod";
+import { Prisma } from "@prisma/client";
 import { logger } from "@/lib/logger";
 
 export function handleApiError(error: unknown) {
@@ -7,20 +8,23 @@ export function handleApiError(error: unknown) {
     const first = error.issues[0];
     const detail = first ? `${first.path.join(".")}: ${first.message}` : "Invalid request data";
     logger.warn("Zod validation error", { detail, issues: error.issues });
-    return NextResponse.json(
-      { message: detail, errors: error.flatten() },
-      { status: 400 }
-    );
+    return NextResponse.json({ message: detail, errors: error.flatten() }, { status: 400 });
   }
 
-  // MongoDB duplicate key
-  const mongoErr = error as { code?: number; keyPattern?: Record<string, number>; message?: string };
-  if (mongoErr?.code === 11000) {
-    const fields = mongoErr.keyPattern ? Object.keys(mongoErr.keyPattern).join(", ") : "record";
-    return NextResponse.json(
-      { message: `Duplicate entry. A record with the same ${fields} already exists.` },
-      { status: 409 }
-    );
+  if (error instanceof Prisma.PrismaClientKnownRequestError) {
+    if (error.code === "P2002") {
+      const fields = Array.isArray(error.meta?.target) ? (error.meta?.target as string[]).join(", ") : "record";
+      return NextResponse.json(
+        { message: `Duplicate entry. A record with the same ${fields} already exists.` },
+        { status: 409 }
+      );
+    }
+    if (error.code === "P2025") {
+      return NextResponse.json({ message: "Record not found" }, { status: 404 });
+    }
+    if (error.code === "P2003") {
+      return NextResponse.json({ message: "Related record not found (invalid reference)." }, { status: 400 });
+    }
   }
 
   if (error instanceof Error) {

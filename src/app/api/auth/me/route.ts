@@ -1,7 +1,6 @@
 import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
-import { connectDb } from "@/lib/db";
-import { UserModel } from "@/models/User";
+import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/auth";
 import { handleApiError, unauthorized } from "@/lib/api-error";
 import { REFRESH_COOKIE } from "@/lib/cookies";
@@ -13,15 +12,18 @@ export async function GET() {
     const session = await getSession();
     if (!session) return unauthorized();
 
-    await connectDb();
-    const user = await UserModel.findById(session.id).select(
-      "-passwordHash -otpCode -passwordResetToken -smtpPass"
-    );
+    const user = await prisma.user.findUnique({
+      where: { id: session.id },
+      select: {
+        id: true, fullName: true, email: true, role: true, phone: true, profilePhoto: true,
+        company: true, designation: true, address: true, lastLoginAt: true, lastLoginIp: true, createdAt: true
+      }
+    });
     if (!user) return unauthorized();
 
     return NextResponse.json({
       user: {
-        id: user._id.toString(),
+        id: user.id,
         fullName: user.fullName,
         email: user.email,
         role: user.role,

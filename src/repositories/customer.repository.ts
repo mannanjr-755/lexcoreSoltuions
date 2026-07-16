@@ -1,6 +1,5 @@
-import { Types } from "mongoose";
-import { connectDb } from "@/lib/db";
-import { CustomerModel } from "@/models/Customer";
+import { prisma } from "@/lib/prisma";
+import { withMongoId, withMongoIds, serializeNested } from "@/lib/serialize";
 import {
   calculateCustomerPayments,
   type CustomerCreateInput,
@@ -8,117 +7,139 @@ import {
 } from "@/validators/customer.schema";
 
 async function generateCustomerId() {
-  const count = await CustomerModel.countDocuments();
+  const count = await prisma.customer.count();
   return `LC-${String(count + 1).padStart(5, "0")}`;
 }
 
 export const customerRepository = {
   async list(params: { page: number; limit: number; query?: string | null; status?: string | null; sort?: string }) {
-    await connectDb();
-    const match: Record<string, unknown> = {};
-    if (params.status) match.status = params.status;
+    const where: Record<string, unknown> = {};
+    if (params.status) where.status = params.status;
     if (params.query) {
-      match.$or = [
-        { name: { $regex: params.query, $options: "i" } },
-        { email: { $regex: params.query, $options: "i" } },
-        { company: { $regex: params.query, $options: "i" } },
-        { projectName: { $regex: params.query, $options: "i" } },
-        { customerId: { $regex: params.query, $options: "i" } }
+      where.OR = [
+        { name: { contains: params.query, mode: "insensitive" } },
+        { email: { contains: params.query, mode: "insensitive" } },
+        { company: { contains: params.query, mode: "insensitive" } },
+        { projectName: { contains: params.query, mode: "insensitive" } },
+        { customerId: { contains: params.query, mode: "insensitive" } },
+        { phone: { contains: params.query, mode: "insensitive" } }
       ];
     }
 
-    const sortField: Record<string, 1 | -1> = params.sort === "name" ? { name: 1 } : { createdAt: -1 };
+    const orderBy =
+      params.sort === "name" ? { name: "asc" as const } : { createdAt: "desc" as const };
 
-    const [result] = await CustomerModel.aggregate([
-      { $match: match },
-      { $sort: sortField },
-      {
-        $facet: {
-          data: [{ $skip: (params.page - 1) * params.limit }, { $limit: params.limit }],
-          total: [{ $count: "count" }],
-          financials: [
-            {
-              $group: {
-                _id: null,
-                totalRevenue: { $sum: "$totalCost" },
-                totalReceived: { $sum: "$paidAmount" },
-                totalPending: { $sum: "$remainingAmount" }
-              }
-            }
-          ]
+    const [data, total, aggregates] = await Promise.all([
+      prisma.customer.findMany({
+        where,
+        orderBy,
+        skip: (params.page - 1) * params.limit,
+        take: params.limit
+      }),
+      prisma.customer.count({ where }),
+      prisma.customer.aggregate({
+        where,
+        _sum: {
+          totalCost: true,
+          paidAmount: true,
+          remainingAmount: true
         }
-      }
+      })
     ]);
 
     return {
-      data: result?.data ?? [],
-      total: result?.total?.[0]?.count ?? 0,
-      financials: result?.financials?.[0] ?? { totalRevenue: 0, totalReceived: 0, totalPending: 0 }
+      data: withMongoIds(serializeNested(data)),
+      total,
+      financials: {
+        totalCost: aggregates._sum.totalCost ?? 0,
+        paidAmount: aggregates._sum.paidAmount ?? 0,
+        remainingAmount: aggregates._sum.remainingAmount ?? 0
+      }
     };
   },
 
-  async findById(id: string) {
-    await connectDb();
-    return CustomerModel.findById(id);
-  },
-
   async create(input: CustomerCreateInput & { assignedManager: string }) {
-    await connectDb();
-    const customerId = await generateCustomerId();
     const payments = calculateCustomerPayments(input.totalCost, input.advancePaid ?? 0, input.paidAmount ?? 0);
 
-    return CustomerModel.create({
-      ...input,
-      technology: input.technology ?? [],
-      priority: input.priority ?? "medium",
-      status: input.status ?? "lead",
-      customerId,
-      projectDeadline: new Date(input.projectDeadline),
-      paidAmount: payments.paidAmount,
-      remainingAmount: payments.remainingAmount
+    const created = await prisma.customer.create({
+      data: {
+        customerId: await generateCustomerId(),
+        name: input.name,
+        phone: input.phone,
+        whatsapp: input.whatsapp,
+        email: input.email.toLowerCase(),
+        company: input.company,
+        address: input.address,
+        projectName: input.projectName,
+        projectType: input.projectType,
+        technology: input.technology ?? [],
+        assignedManager: input.assignedManager,
+        totalCost: input.totalCost,
+        advancePaid: input.advancePaid ?? 0,
+        paidAmount: payments.paidAmount,
+        remainingAmount: payments.remainingAmount,
+        projectDeadline: new Date(input.projectDeadline),
+        priority: input.priority ?? "medium",
+        status: input.status ?? "lead",
+        notes: input.notes
+      }
     });
+
+    return withMongoId(serializeNested(created));
   },
 
   async update(id: string, input: CustomerUpdateInput) {
-    await connectDb();
-    const existing = await CustomerModel.findById(id);
+    const existing = await prisma.customer.findUnique({ where: { id } });
     if (!existing) return null;
 
     const totalCost = input.totalCost ?? existing.totalCost;
-    const advancePaid = input.advancePaid ?? existing.advancePaid ?? 0;
-    const paidAmount = input.paidAmount ?? existing.paidAmount ?? 0;
-    const payments = calculateCustomerPayments(totalCost, advancePaid, paidAmount);
+    const advancePaid = input.advancePaid ?? existing.advancePaid;
+    const payments = calculateCustomerPayments(totalCost, advancePaid, input.paidAmount ?? existing.paidAmount);
 
-    Object.assign(existing, input, {
-      projectDeadline: input.projectDeadline ? new Date(input.projectDeadline) : existing.projectDeadline,
-      paidAmount: payments.paidAmount,
-      remainingAmount: payments.remainingAmount
+    const updated = await prisma.customer.update({
+      where: { id },
+      data: {
+        ...(input.name !== undefined ? { name: input.name } : {}),
+        ...(input.phone !== undefined ? { phone: input.phone } : {}),
+        ...(input.whatsapp !== undefined ? { whatsapp: input.whatsapp } : {}),
+        ...(input.email !== undefined ? { email: input.email.toLowerCase() } : {}),
+        ...(input.company !== undefined ? { company: input.company } : {}),
+        ...(input.address !== undefined ? { address: input.address } : {}),
+        ...(input.projectName !== undefined ? { projectName: input.projectName } : {}),
+        ...(input.projectType !== undefined ? { projectType: input.projectType } : {}),
+        ...(input.technology !== undefined ? { technology: input.technology } : {}),
+        ...(input.priority !== undefined ? { priority: input.priority } : {}),
+        ...(input.status !== undefined ? { status: input.status } : {}),
+        ...(input.notes !== undefined ? { notes: input.notes } : {}),
+        ...(input.projectDeadline
+          ? { projectDeadline: new Date(input.projectDeadline) }
+          : {}),
+        totalCost,
+        advancePaid,
+        paidAmount: payments.paidAmount,
+        remainingAmount: payments.remainingAmount
+      }
     });
-    await existing.save();
-    return existing;
+
+    return withMongoId(serializeNested(updated));
   },
 
   async remove(id: string) {
-    await connectDb();
-    if (!Types.ObjectId.isValid(id)) return null;
-    const deleted = await CustomerModel.findByIdAndDelete(id);
-    if (!deleted) return null;
-    const stillThere = await CustomerModel.exists({ _id: id });
-    if (stillThere) {
-      throw new Error("Delete verification failed — customer still exists in MongoDB");
+    try {
+      const deleted = await prisma.customer.delete({ where: { id } });
+      return withMongoId(serializeNested(deleted));
+    } catch {
+      return null;
     }
-    return deleted;
+  },
+
+  async findById(id: string) {
+    const customer = await prisma.customer.findUnique({ where: { id } });
+    return withMongoId(serializeNested(customer));
   },
 
   async removeMany(ids: string[]) {
-    await connectDb();
-    const validIds = ids.filter((id) => Types.ObjectId.isValid(id));
-    if (validIds.length === 0) return { deletedCount: 0, acknowledged: true };
-    const result = await CustomerModel.deleteMany({ _id: { $in: validIds } });
-    const remaining = await CustomerModel.countDocuments({ _id: { $in: validIds } });
-    if (remaining > 0) {
-      throw new Error(`Delete verification failed — ${remaining} customer(s) still exist`);
-    }
-    return result;
+    if (ids.length === 0) return { count: 0 };
+    return prisma.customer.deleteMany({ where: { id: { in: ids } } });
   }
 };

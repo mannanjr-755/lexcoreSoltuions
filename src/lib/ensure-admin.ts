@@ -1,8 +1,7 @@
-import { connectDb } from "@/lib/db";
+import { prisma } from "@/lib/prisma";
 import { getEnv } from "@/lib/env";
 import { hashPassword } from "@/lib/bcrypt";
-import { UserModel } from "@/models/User";
-import { getSystemSettings } from "@/models/SystemSettings";
+import { getSystemSettings } from "@/services/settings.service";
 import { logger } from "@/lib/logger";
 
 /**
@@ -10,9 +9,7 @@ import { logger } from "@/lib/logger";
  * Creates from SUPER_ADMIN_* env vars when missing.
  */
 export async function ensureSuperAdmin() {
-  await connectDb();
-
-  const existing = await UserModel.findOne({ role: "super_admin" });
+  const existing = await prisma.user.findFirst({ where: { role: "super_admin" } });
   if (existing) return existing;
 
   const env = getEnv();
@@ -23,16 +20,18 @@ export async function ensureSuperAdmin() {
   }
 
   const passwordHash = await hashPassword(env.SUPER_ADMIN_PASSWORD);
-  const admin = await UserModel.create({
-    fullName: env.SUPER_ADMIN_NAME ?? "Super Admin",
-    email: env.SUPER_ADMIN_EMAIL.toLowerCase().trim(),
-    passwordHash,
-    role: "super_admin",
-    company: "Lexcore Solutions",
-    designation: "Super Admin",
-    isActive: true,
-    failedLoginAttempts: 0,
-    lockedUntil: null
+  const admin = await prisma.user.create({
+    data: {
+      fullName: env.SUPER_ADMIN_NAME ?? "Super Admin",
+      email: env.SUPER_ADMIN_EMAIL.toLowerCase().trim(),
+      passwordHash,
+      role: "super_admin",
+      company: "Lexcore Solutions",
+      designation: "Super Admin",
+      isActive: true,
+      failedLoginAttempts: 0,
+      lockedUntil: null
+    }
   });
 
   await getSystemSettings();

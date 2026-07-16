@@ -1,7 +1,6 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { connectDb } from "@/lib/db";
-import { getSystemSettings, SystemSettingsModel } from "@/models/SystemSettings";
+import { getSystemSettings, updateSystemSettings } from "@/services/settings.service";
 import { getSession } from "@/lib/auth";
 import { handleApiError, unauthorized, forbidden } from "@/lib/api-error";
 import { hasPermission } from "@/types/permissions";
@@ -37,9 +36,8 @@ export async function GET() {
     if (!session) return unauthorized();
     if (!hasPermission(session.role, "settings:read")) return forbidden();
 
-    await connectDb();
     const settings = await getSystemSettings();
-    const safe = settings.toObject();
+    const safe = { ...settings };
     if (safe.smtpPass) safe.smtpPass = "********";
 
     return NextResponse.json({ settings: safe });
@@ -54,7 +52,6 @@ export async function PATCH(req: Request) {
     if (!session) return unauthorized();
     if (!hasPermission(session.role, "settings:write")) return forbidden();
 
-    await connectDb();
     const body = await req.json();
     const parsed = settingsSchema.safeParse(body);
     if (!parsed.success) {
@@ -64,8 +61,8 @@ export async function PATCH(req: Request) {
     const update = { ...parsed.data };
     if (update.smtpPass === "********") delete update.smtpPass;
 
-    const settings = await SystemSettingsModel.findOneAndUpdate({}, update, { new: true, upsert: true });
-    const safe = settings!.toObject();
+    const settings = await updateSystemSettings(update);
+    const safe = { ...settings };
     if (safe.smtpPass) safe.smtpPass = "********";
 
     const { ipAddress, userAgent, browser } = getClientInfo(req);

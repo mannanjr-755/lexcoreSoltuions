@@ -1,13 +1,14 @@
-import { PayrollModel } from "@/models/Payroll";
+import { prisma } from "@/lib/prisma";
 import { payrollSchema } from "@/validators/modules.schema";
 import { createCrudHandlers } from "@/lib/crud-factory";
 
 const handlers = createCrudHandlers({
-  model: PayrollModel,
   entity: "payroll",
+  delegate: prisma.payroll,
   schema: payrollSchema,
   searchFields: ["status"],
-  populate: "employeeId",
+  include: { employee: { select: { id: true, fullName: true, employeeId: true } } },
+  mapRow: (row) => ({ ...row, employeeId: row.employee ?? row.employeeId }),
   transformUpdate: (data) => ({
     ...data,
     ...(data.paidAt ? { paidAt: new Date(String(data.paidAt)) } : {})

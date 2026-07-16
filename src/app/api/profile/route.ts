@@ -1,7 +1,6 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { connectDb } from "@/lib/db";
-import { UserModel } from "@/models/User";
+import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/auth";
 import { handleApiError, unauthorized } from "@/lib/api-error";
 import { getClientInfo, logActivity } from "@/lib/activity";
@@ -20,8 +19,13 @@ export async function GET() {
     const session = await getSession();
     if (!session) return unauthorized();
 
-    await connectDb();
-    const user = await UserModel.findById(session.id).select("-passwordHash -otpCode -passwordResetToken");
+    const user = await prisma.user.findUnique({
+      where: { id: session.id },
+      select: {
+        id: true, fullName: true, email: true, role: true, phone: true, company: true,
+        designation: true, address: true, profilePhoto: true, lastLoginAt: true, createdAt: true
+      }
+    });
     if (!user) return unauthorized();
 
     return NextResponse.json({ user });
@@ -35,16 +39,20 @@ export async function PATCH(req: Request) {
     const session = await getSession();
     if (!session) return unauthorized();
 
-    await connectDb();
     const body = await req.json();
     const parsed = profileSchema.safeParse(body);
     if (!parsed.success) {
       return NextResponse.json({ message: "Validation failed", errors: parsed.error.flatten() }, { status: 400 });
     }
 
-    const user = await UserModel.findByIdAndUpdate(session.id, parsed.data, { new: true }).select(
-      "-passwordHash -otpCode -passwordResetToken"
-    );
+    const user = await prisma.user.update({
+      where: { id: session.id },
+      data: parsed.data,
+      select: {
+        id: true, fullName: true, email: true, role: true, phone: true, company: true,
+        designation: true, address: true, profilePhoto: true, lastLoginAt: true, createdAt: true
+      }
+    });
 
     const { ipAddress, userAgent, browser } = getClientInfo(req);
     await logActivity({

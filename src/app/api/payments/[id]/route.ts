@@ -1,13 +1,17 @@
-import { PaymentModel } from "@/models/Payment";
+import { prisma } from "@/lib/prisma";
 import { paymentSchema } from "@/validators/modules.schema";
 import { createCrudHandlers } from "@/lib/crud-factory";
 
 const handlers = createCrudHandlers({
-  model: PaymentModel,
   entity: "payment",
+  delegate: prisma.payment,
   schema: paymentSchema,
   searchFields: ["invoiceNumber"],
-  populate: ["customerId", "projectId"],
+  include: {
+    customer: { select: { id: true, name: true, company: true } },
+    project: { select: { id: true, name: true } }
+  },
+  mapRow: (row) => ({ ...row, customerId: row.customer, projectId: row.project ?? row.projectId }),
   transformUpdate: (data) => ({
     ...data,
     ...(data.dueDate ? { dueDate: new Date(String(data.dueDate)) } : {}),

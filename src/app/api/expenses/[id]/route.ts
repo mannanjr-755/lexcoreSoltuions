@@ -1,10 +1,10 @@
-import { ExpenseModel } from "@/models/Expense";
+import { prisma } from "@/lib/prisma";
 import { expenseSchema } from "@/validators/modules.schema";
 import { createCrudHandlers } from "@/lib/crud-factory";
 
 const handlers = createCrudHandlers({
-  model: ExpenseModel,
   entity: "expense",
+  delegate: prisma.expense,
   schema: expenseSchema,
   searchFields: ["title"],
   transformUpdate: (data) => ({

@@ -1,8 +1,7 @@
 import { cookies } from "next/headers";
-import { connectDb } from "@/lib/db";
+import { prisma } from "@/lib/prisma";
 import { verifyAccessToken, verifyRefreshToken, signAccessToken } from "@/lib/jwt";
 import { ACCESS_COOKIE, REFRESH_COOKIE } from "@/lib/cookies";
-import { UserModel } from "@/models/User";
 import type { AuthUser } from "@/types/auth";
 import { hasPermission, type Permission } from "@/types/permissions";
 
@@ -14,11 +13,13 @@ export async function getSession(): Promise<AuthUser | null> {
   if (accessToken) {
     try {
       const payload = verifyAccessToken(accessToken);
-      await connectDb();
-      const user = await UserModel.findById(payload.sub).select("fullName email role profilePhoto isActive");
+      const user = await prisma.user.findUnique({
+        where: { id: payload.sub },
+        select: { id: true, fullName: true, email: true, role: true, profilePhoto: true, isActive: true }
+      });
       if (!user || !user.isActive) return null;
       return {
-        id: user._id.toString(),
+        id: user.id,
         email: user.email,
         role: user.role,
         fullName: user.fullName,
@@ -32,11 +33,13 @@ export async function getSession(): Promise<AuthUser | null> {
   if (refreshToken) {
     try {
       const payload = verifyRefreshToken(refreshToken);
-      await connectDb();
-      const user = await UserModel.findById(payload.sub).select("fullName email role profilePhoto isActive");
+      const user = await prisma.user.findUnique({
+        where: { id: payload.sub },
+        select: { id: true, fullName: true, email: true, role: true, profilePhoto: true, isActive: true }
+      });
       if (!user || !user.isActive) return null;
       return {
-        id: user._id.toString(),
+        id: user.id,
         email: user.email,
         role: user.role,
         fullName: user.fullName,

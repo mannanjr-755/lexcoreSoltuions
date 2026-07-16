@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { customerCreateSchema } from "@/validators/customer.schema";
 import { customerRepository } from "@/repositories/customer.repository";
-import { NotificationModel } from "@/models/Notification";
+import { prisma } from "@/lib/prisma";
 import { handleApiError, unauthorized } from "@/lib/api-error";
 import { getSession } from "@/lib/auth";
 import { getClientInfo, logActivity } from "@/lib/activity";
@@ -38,6 +38,7 @@ export async function POST(req: Request) {
 
     const assignedManager = parsed.data.assignedManager || session.id;
     const created = await customerRepository.create({ ...parsed.data, assignedManager });
+    if (!created) return NextResponse.json({ message: "Unable to create customer" }, { status: 500 });
     const paymentPercentage =
       created.totalCost > 0 ? Math.round((created.paidAmount / created.totalCost) * 100) : 0;
 
@@ -47,7 +48,7 @@ export async function POST(req: Request) {
       userName: session.fullName,
       action: "customer_added",
       entity: "customer",
-      entityId: created._id.toString(),
+      entityId: created.id,
       description: `Customer ${created.name} (${created.customerId}) added`,
       ipAddress,
       userAgent,
@@ -55,15 +56,17 @@ export async function POST(req: Request) {
       metadata: { paymentPercentage }
     });
 
-    await NotificationModel.create({
-      userId: session.id,
-      title: "New Customer Added",
-      message: `${created.name} has been added as a new customer`,
-      type: "customer",
-      link: "/crm/customers"
+    await prisma.notification.create({
+      data: {
+        userId: session.id,
+        title: "New Customer Added",
+        message: `${created.name} has been added as a new customer`,
+        type: "customer",
+        link: "/crm/customers"
+      }
     });
 
-    return NextResponse.json({ ...created.toObject(), paymentPercentage }, { status: 201 });
+    return NextResponse.json({ ...created, paymentPercentage }, { status: 201 });
   } catch (error) {
     return handleApiError(error);
   }

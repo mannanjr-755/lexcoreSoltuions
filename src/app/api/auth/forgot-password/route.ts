@@ -1,8 +1,7 @@
 import { NextResponse } from "next/server";
 import crypto from "crypto";
 import { z } from "zod";
-import { connectDb } from "@/lib/db";
-import { UserModel } from "@/models/User";
+import { prisma } from "@/lib/prisma";
 import { handleApiError } from "@/lib/api-error";
 import { sendOtpEmail } from "@/lib/email";
 import { rateLimit } from "@/lib/rate-limit";
@@ -20,14 +19,15 @@ export async function POST(req: Request) {
       return NextResponse.json({ message: "Too many requests. Try again later." }, { status: 429 });
     }
 
-    await connectDb();
     const body = await req.json();
     const parsed = forgotSchema.safeParse(body);
     if (!parsed.success) {
       return NextResponse.json({ message: "Invalid email format" }, { status: 400 });
     }
 
-    const user = await UserModel.findOne({ email: parsed.data.email.toLowerCase(), role: "super_admin" });
+    const user = await prisma.user.findFirst({
+      where: { email: parsed.data.email.toLowerCase(), role: "super_admin" }
+    });
 
     // Always return success to prevent email enumeration
     if (!user) {
@@ -35,10 +35,10 @@ export async function POST(req: Request) {
     }
 
     const otp = crypto.randomInt(100000, 999999).toString();
-    user.otpCode = otp;
-    user.otpExpiresAt = new Date(Date.now() + 15 * 60 * 1000);
-    user.otpVerified = false;
-    await user.save();
+    await prisma.user.update({
+      where: { id: user.id },
+      data: { otpCode: otp, otpExpiresAt: new Date(Date.now() + 15 * 60 * 1000), otpVerified: false }
+    });
 
     try {
       await sendOtpEmail(user.email, otp, user.fullName);
@@ -50,7 +50,7 @@ export async function POST(req: Request) {
     }
 
     await logActivity({
-      userId: user._id.toString(),
+      userId: user.id,
       userName: user.fullName,
       action: "forgot_password",
       description: "Password reset OTP requested",

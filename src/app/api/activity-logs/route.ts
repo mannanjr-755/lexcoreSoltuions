@@ -1,6 +1,5 @@
 import { NextResponse } from "next/server";
-import { connectDb } from "@/lib/db";
-import { ActivityLogModel } from "@/models/ActivityLog";
+import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/auth";
 import { handleApiError, unauthorized } from "@/lib/api-error";
 
@@ -13,10 +12,9 @@ export async function GET(req: Request) {
     const page = Math.max(Number(searchParams.get("page") ?? "1"), 1);
     const limit = Math.min(Number(searchParams.get("limit") ?? "20"), 100);
 
-    await connectDb();
     const [logs, total] = await Promise.all([
-      ActivityLogModel.find().sort({ createdAt: -1 }).skip((page - 1) * limit).limit(limit).lean(),
-      ActivityLogModel.countDocuments()
+      prisma.activityLog.findMany({ orderBy: { createdAt: "desc" }, skip: (page - 1) * limit, take: limit }),
+      prisma.activityLog.count()
     ]);
 
     return NextResponse.json({ logs, total, page, limit });

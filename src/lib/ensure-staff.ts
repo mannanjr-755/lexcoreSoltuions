@@ -1,5 +1,5 @@
-import { connectDb } from "@/lib/db";
-import { EmployeeModel } from "@/models/Employee";
+import { prisma } from "@/lib/prisma";
+import { withMongoIds, serializeNested } from "@/lib/serialize";
 
 const STAFF = [
   {
@@ -36,29 +36,42 @@ const STAFF = [
   }
 ] as const;
 
-/** Ensures Lexcore staff exist in MongoDB so Attendance dropdown always has real employees. */
+/** Ensures Lexcore staff exist so Attendance dropdown always has real employees. */
 export async function ensureStaffEmployees() {
-  await connectDb();
-
   for (const staff of STAFF) {
-    const existing = await EmployeeModel.findOne({
-      $or: [{ employeeId: staff.employeeId }, { email: staff.email }, { fullName: staff.fullName }]
+    const existing = await prisma.employee.findFirst({
+      where: {
+        OR: [{ employeeId: staff.employeeId }, { email: staff.email }, { fullName: staff.fullName }]
+      }
     });
 
     if (!existing) {
-      await EmployeeModel.create({
-        ...staff,
-        phone: "",
-        status: "active",
-        joinDate: new Date(),
-        attendancePercentage: 100,
-        isArchived: false
+      await prisma.employee.create({
+        data: {
+          ...staff,
+          phone: "",
+          status: "active",
+          joinDate: new Date(),
+          attendancePercentage: 100,
+          isArchived: false
+        }
       });
     }
   }
 
-  return EmployeeModel.find({ isArchived: { $ne: true }, status: { $ne: "inactive" } })
-    .sort({ fullName: 1 })
-    .select("_id employeeId fullName department position email status")
-    .lean();
+  const employees = await prisma.employee.findMany({
+    where: { isArchived: false, status: { not: "inactive" } },
+    orderBy: { fullName: "asc" },
+    select: {
+      id: true,
+      employeeId: true,
+      fullName: true,
+      department: true,
+      position: true,
+      email: true,
+      status: true
+    }
+  });
+
+  return withMongoIds(serializeNested(employees));
 }

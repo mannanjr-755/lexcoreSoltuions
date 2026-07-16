@@ -1,11 +1,11 @@
-import { EmployeeModel } from "@/models/Employee";
+import { prisma } from "@/lib/prisma";
 import { employeeSchema } from "@/validators/modules.schema";
 import { createCrudHandlers } from "@/lib/crud-factory";
 import { ensureStaffEmployees } from "@/lib/ensure-staff";
 
 const handlers = createCrudHandlers({
-  model: EmployeeModel,
   entity: "employee",
+  delegate: prisma.employee,
   schema: employeeSchema,
   searchFields: ["fullName", "email", "employeeId", "department", "position"],
   transformCreate: (data) => ({

@@ -1,6 +1,6 @@
 import nodemailer from "nodemailer";
 import { getEnv } from "@/lib/env";
-import { getSystemSettings } from "@/models/SystemSettings";
+import { getSystemSettings } from "@/services/settings.service";
 
 async function createTransporter() {
   const settings = await getSystemSettings();

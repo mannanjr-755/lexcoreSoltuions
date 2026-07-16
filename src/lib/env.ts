@@ -7,7 +7,7 @@ function emptyToUndefined(value: unknown) {
 }
 
 const envSchema = z.object({
-  MONGODB_URI: z.string().min(1, "MONGODB_URI is required"),
+  DATABASE_URL: z.string().min(1, "DATABASE_URL is required (Neon PostgreSQL connection string)"),
   JWT_ACCESS_SECRET: z.string().min(32, "JWT_ACCESS_SECRET must be at least 32 characters"),
   JWT_REFRESH_SECRET: z.string().min(32, "JWT_REFRESH_SECRET must be at least 32 characters"),
   JWT_OTP_SECRET: z.string().min(32).optional(),
@@ -33,7 +33,7 @@ export function getEnv(): AppEnv {
   if (cachedEnv) return cachedEnv;
 
   const parsed = envSchema.safeParse({
-    MONGODB_URI: process.env.MONGODB_URI,
+    DATABASE_URL: process.env.DATABASE_URL,
     JWT_ACCESS_SECRET: process.env.JWT_ACCESS_SECRET,
     JWT_REFRESH_SECRET: process.env.JWT_REFRESH_SECRET,
     JWT_OTP_SECRET: process.env.JWT_OTP_SECRET ?? process.env.JWT_ACCESS_SECRET,
@@ -60,7 +60,6 @@ export function getEnv(): AppEnv {
   return cachedEnv;
 }
 
-/** Clears cached env (useful after seeding / tests). */
 export function resetEnvCache() {
   cachedEnv = null;
 }

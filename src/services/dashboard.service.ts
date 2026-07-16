@@ -1,13 +1,6 @@
-import { connectDb } from "@/lib/db";
-import { CustomerModel } from "@/models/Customer";
-import { ProjectModel } from "@/models/Project";
-import { EmployeeModel } from "@/models/Employee";
-import { ExpenseModel } from "@/models/Expense";
-import { PaymentModel } from "@/models/Payment";
-import { ActivityLogModel } from "@/models/ActivityLog";
-import { NotificationModel } from "@/models/Notification";
-import { TaskModel } from "@/models/Task";
-import { AttendanceModel, toDateKey } from "@/models/Attendance";
+import { prisma } from "@/lib/prisma";
+import { toDateKey } from "@/lib/attendance-utils";
+import { withMongoIds, serializeNested } from "@/lib/serialize";
 
 function monthBounds(offset = 0) {
   const now = new Date();
@@ -22,21 +15,25 @@ function growthPct(current: number, previous: number) {
 }
 
 export async function getDashboardStats(userId: string) {
-  await connectDb();
-
   const now = new Date();
   const sixMonthsAgo = new Date(now.getFullYear(), now.getMonth() - 5, 1);
   const { start: curStart, end: curEnd } = monthBounds(0);
   const { start: prevStart, end: prevEnd } = monthBounds(-1);
+  const todayKey = toDateKey(now);
+
+  const dayStart = new Date();
+  dayStart.setHours(0, 0, 0, 0);
+  const dayEnd = new Date();
+  dayEnd.setHours(23, 59, 59, 999);
 
   const [
-    customerStats,
-    projectStats,
-    employeeStats,
+    customerAgg,
+    projectGroups,
+    employeeGroups,
     managerCount,
-    expenseStats,
-    monthlyRevenue,
-    monthlyExpenses,
+    expenseTotal,
+    monthlyPayments,
+    monthlyExpenseRows,
     recentActivities,
     unreadNotifications,
     upcomingDeadlines,
@@ -54,133 +51,128 @@ export async function getDashboardStats(userId: string) {
     todayAttendanceByStatus,
     todayAttendanceTotal
   ] = await Promise.all([
-    CustomerModel.aggregate([
-      {
-        $group: {
-          _id: null,
-          total: { $sum: 1 },
-          totalRevenue: { $sum: "$totalCost" },
-          totalReceived: { $sum: "$paidAmount" },
-          totalPending: { $sum: "$remainingAmount" }
-        }
-      }
-    ]),
-    ProjectModel.aggregate([
-      { $match: { isArchived: { $ne: true } } },
-      {
-        $group: {
-          _id: "$status",
-          count: { $sum: 1 },
-          avgProgress: { $avg: "$progress" }
-        }
-      }
-    ]),
-    EmployeeModel.aggregate([
-      { $match: { isArchived: { $ne: true } } },
-      {
-        $group: {
-          _id: "$status",
-          count: { $sum: 1 }
-        }
-      }
-    ]),
-    EmployeeModel.countDocuments({
-      status: "active",
-      isArchived: { $ne: true },
-      position: { $regex: /manager|lead|director/i }
+    prisma.customer.aggregate({
+      _count: { _all: true },
+      _sum: { totalCost: true, paidAmount: true, remainingAmount: true }
     }),
-    ExpenseModel.aggregate([
-      { $match: { isArchived: { $ne: true } } },
-      { $group: { _id: null, total: { $sum: "$amount" } } }
-    ]),
-    PaymentModel.aggregate([
-      {
-        $match: {
-          isArchived: { $ne: true },
-          status: { $in: ["paid", "partial"] },
-          paidAt: { $gte: sixMonthsAgo }
-        }
+    prisma.project.groupBy({
+      by: ["status"],
+      where: { isArchived: false },
+      _count: { _all: true },
+      _avg: { progress: true }
+    }),
+    prisma.employee.groupBy({
+      by: ["status"],
+      where: { isArchived: false },
+      _count: { _all: true }
+    }),
+    prisma.employee.count({
+      where: {
+        status: "active",
+        isArchived: false,
+        position: { contains: "manager", mode: "insensitive" }
+      }
+    }),
+    prisma.expense.aggregate({
+      where: { isArchived: false },
+      _sum: { amount: true }
+    }),
+    prisma.payment.groupBy({
+      by: ["paidAt"],
+      where: {
+        isArchived: false,
+        status: { in: ["paid", "partial"] },
+        paidAt: { gte: sixMonthsAgo }
       },
-      {
-        $group: {
-          _id: { year: { $year: "$paidAt" }, month: { $month: "$paidAt" } },
-          revenue: { $sum: "$grandTotal" }
-        }
+      _sum: { grandTotal: true }
+    }),
+    prisma.expense.findMany({
+      where: { isArchived: false, date: { gte: sixMonthsAgo } },
+      select: { date: true, amount: true }
+    }),
+    prisma.activityLog.findMany({ orderBy: { createdAt: "desc" }, take: 12 }),
+    prisma.notification.count({ where: { userId, isRead: false } }),
+    prisma.project.findMany({
+      where: {
+        deadline: { gte: now },
+        status: { in: ["pending", "active"] },
+        isArchived: false
       },
-      { $sort: { "_id.year": 1, "_id.month": 1 } }
-    ]),
-    ExpenseModel.aggregate([
-      { $match: { isArchived: { $ne: true }, date: { $gte: sixMonthsAgo } } },
-      {
-        $group: {
-          _id: { year: { $year: "$date" }, month: { $month: "$date" } },
-          expenses: { $sum: "$amount" }
-        }
+      orderBy: { deadline: "asc" },
+      take: 6,
+      select: { id: true, name: true, deadline: true, progress: true, status: true }
+    }),
+    prisma.payment.findMany({
+      orderBy: { createdAt: "desc" },
+      take: 6,
+      include: { customer: { select: { name: true, company: true } } }
+    }),
+    prisma.customer.findMany({
+      orderBy: { createdAt: "desc" },
+      take: 6,
+      select: { id: true, name: true, company: true, status: true, createdAt: true, totalCost: true }
+    }),
+    prisma.project.findMany({
+      orderBy: { createdAt: "desc" },
+      take: 6,
+      select: { id: true, name: true, status: true, progress: true, deadline: true, createdAt: true }
+    }),
+    prisma.task.count({
+      where: {
+        dueDate: { gte: dayStart, lte: dayEnd },
+        status: { not: "done" },
+        isArchived: false
+      }
+    }),
+    prisma.payment.count({ where: { isArchived: false } }),
+    prisma.payment.aggregate({
+      where: {
+        isArchived: false,
+        status: { in: ["paid", "partial"] },
+        paidAt: { gte: curStart, lt: curEnd }
       },
-      { $sort: { "_id.year": 1, "_id.month": 1 } }
-    ]),
-    ActivityLogModel.find().sort({ createdAt: -1 }).limit(12).lean(),
-    NotificationModel.countDocuments({ userId, isRead: false }),
-    ProjectModel.find({ deadline: { $gte: now }, status: { $in: ["pending", "active"] } })
-      .sort({ deadline: 1 })
-      .limit(6)
-      .select("name deadline progress status")
-      .lean(),
-    PaymentModel.find()
-      .sort({ createdAt: -1 })
-      .limit(6)
-      .populate("customerId", "name company")
-      .lean(),
-    CustomerModel.find().sort({ createdAt: -1 }).limit(6).select("name company status createdAt totalCost").lean(),
-    ProjectModel.find().sort({ createdAt: -1 }).limit(6).select("name status progress deadline createdAt").lean(),
-    (() => {
-      const dayStart = new Date();
-      dayStart.setHours(0, 0, 0, 0);
-      const dayEnd = new Date();
-      dayEnd.setHours(23, 59, 59, 999);
-      return TaskModel.countDocuments({
-        dueDate: { $gte: dayStart, $lt: dayEnd },
-        status: { $ne: "done" }
-      });
-    })(),
-    PaymentModel.countDocuments(),
-    PaymentModel.aggregate([
-      {
-        $match: {
-          status: { $in: ["paid", "partial"] },
-          paidAt: { $gte: curStart, $lt: curEnd }
-        }
+      _sum: { grandTotal: true }
+    }),
+    prisma.payment.aggregate({
+      where: {
+        isArchived: false,
+        status: { in: ["paid", "partial"] },
+        paidAt: { gte: prevStart, lt: prevEnd }
       },
-      { $group: { _id: null, total: { $sum: "$grandTotal" } } }
-    ]),
-    PaymentModel.aggregate([
-      {
-        $match: {
-          status: { $in: ["paid", "partial"] },
-          paidAt: { $gte: prevStart, $lt: prevEnd }
-        }
-      },
-      { $group: { _id: null, total: { $sum: "$grandTotal" } } }
-    ]),
-    ExpenseModel.aggregate([
-      { $match: { date: { $gte: curStart, $lt: curEnd } } },
-      { $group: { _id: null, total: { $sum: "$amount" } } }
-    ]),
-    ExpenseModel.aggregate([
-      { $match: { date: { $gte: prevStart, $lt: prevEnd } } },
-      { $group: { _id: null, total: { $sum: "$amount" } } }
-    ]),
-    EmployeeModel.aggregate([{ $group: { _id: null, avg: { $avg: "$attendancePercentage" } } }]),
-    NotificationModel.find({ userId }).sort({ createdAt: -1 }).limit(8).lean(),
-    AttendanceModel.aggregate([
-      { $match: { dateKey: toDateKey(now) } },
-      { $group: { _id: "$status", count: { $sum: 1 } } }
-    ]),
-    AttendanceModel.countDocuments({ dateKey: toDateKey(now) })
+      _sum: { grandTotal: true }
+    }),
+    prisma.expense.aggregate({
+      where: { isArchived: false, date: { gte: curStart, lt: curEnd } },
+      _sum: { amount: true }
+    }),
+    prisma.expense.aggregate({
+      where: { isArchived: false, date: { gte: prevStart, lt: prevEnd } },
+      _sum: { amount: true }
+    }),
+    prisma.employee.aggregate({
+      where: { isArchived: false },
+      _avg: { attendancePercentage: true }
+    }),
+    prisma.notification.findMany({
+      where: { userId },
+      orderBy: { createdAt: "desc" },
+      take: 8
+    }),
+    prisma.attendance.groupBy({
+      by: ["status"],
+      where: { dateKey: todayKey },
+      _count: { _all: true }
+    }),
+    prisma.attendance.count({ where: { dateKey: todayKey } })
   ]);
 
-  const customers = customerStats[0] ?? { total: 0, totalRevenue: 0, totalReceived: 0, totalPending: 0 };
-  const expenses = expenseStats[0]?.total ?? 0;
+  const customers = {
+    total: customerAgg._count._all,
+    totalRevenue: customerAgg._sum.totalCost ?? 0,
+    totalReceived: customerAgg._sum.paidAmount ?? 0,
+    totalPending: customerAgg._sum.remainingAmount ?? 0
+  };
+  const expenses = expenseTotal._sum.amount ?? 0;
   const totalRevenue = customers.totalReceived;
   const profit = totalRevenue - expenses;
 
@@ -194,25 +186,26 @@ export async function getDashboardStats(userId: string) {
     running: 0
   };
   let avgProgress = 0;
-  for (const p of projectStats) {
-    projectCounts.total += p.count;
-    if (p._id === "active") {
-      projectCounts.active = p.count;
-      projectCounts.running = p.count;
+  for (const p of projectGroups) {
+    const count = p._count._all;
+    projectCounts.total += count;
+    if (p.status === "active") {
+      projectCounts.active = count;
+      projectCounts.running = count;
     }
-    if (p._id === "completed") projectCounts.completed = p.count;
-    if (p._id === "pending") projectCounts.pending = p.count;
-    if (p._id === "cancelled") projectCounts.cancelled = p.count;
-    if (p._id === "on_hold") projectCounts.on_hold = p.count;
-    avgProgress += (p.avgProgress ?? 0) * p.count;
+    if (p.status === "completed") projectCounts.completed = count;
+    if (p.status === "pending") projectCounts.pending = count;
+    if (p.status === "cancelled") projectCounts.cancelled = count;
+    if (p.status === "on_hold") projectCounts.on_hold = count;
+    avgProgress += (p._avg.progress ?? 0) * count;
   }
   if (projectCounts.total > 0) avgProgress /= projectCounts.total;
 
   let employeesActive = 0;
   let employeesTotal = 0;
-  for (const e of employeeStats) {
-    employeesTotal += e.count;
-    if (e._id === "active") employeesActive = e.count;
+  for (const e of employeeGroups) {
+    employeesTotal += e._count._all;
+    if (e.status === "active") employeesActive = e._count._all;
   }
 
   const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
@@ -220,27 +213,27 @@ export async function getDashboardStats(userId: string) {
   for (let i = 5; i >= 0; i--) {
     const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
     const year = d.getFullYear();
-    const month = d.getMonth() + 1;
-    const rev = monthlyRevenue.find((r) => r._id.year === year && r._id.month === month);
-    const exp = monthlyExpenses.find((e) => e._id.year === year && e._id.month === month);
+    const month = d.getMonth();
+    const rev = monthlyPayments
+      .filter((r) => r.paidAt && r.paidAt.getFullYear() === year && r.paidAt.getMonth() === month)
+      .reduce((sum, r) => sum + (r._sum.grandTotal ?? 0), 0);
+    const exp = monthlyExpenseRows
+      .filter((e) => e.date.getFullYear() === year && e.date.getMonth() === month)
+      .reduce((sum, e) => sum + e.amount, 0);
     chartData.push({
-      month: monthNames[d.getMonth()],
-      revenue: rev?.revenue ?? 0,
-      expenses: exp?.expenses ?? 0,
-      profit: (rev?.revenue ?? 0) - (exp?.expenses ?? 0)
+      month: monthNames[month],
+      revenue: rev,
+      expenses: exp,
+      profit: rev - exp
     });
   }
 
-  const monthlyRevenueValue = curMonthRevenue[0]?.total ?? 0;
-  const monthlyExpensesValue = curMonthExpenses[0]?.total ?? 0;
+  const monthlyRevenueValue = curMonthRevenue._sum.grandTotal ?? 0;
+  const monthlyExpensesValue = curMonthExpenses._sum.amount ?? 0;
   const monthlyProfitValue = monthlyRevenueValue - monthlyExpensesValue;
-  const prevRev = prevMonthRevenue[0]?.total ?? 0;
-  const prevExp = prevMonthExpenses[0]?.total ?? 0;
+  const prevRev = prevMonthRevenue._sum.grandTotal ?? 0;
+  const prevExp = prevMonthExpenses._sum.amount ?? 0;
   const prevProfit = prevRev - prevExp;
-
-  const spark = chartData.map((c) => c.revenue);
-  const sparkExp = chartData.map((c) => c.expenses);
-  const sparkProfit = chartData.map((c) => c.profit);
 
   const attendanceToday = {
     total: todayAttendanceTotal,
@@ -253,18 +246,24 @@ export async function getDashboardStats(userId: string) {
     percentage: 0
   };
   for (const row of todayAttendanceByStatus) {
-    if (row._id === "present") attendanceToday.present = row.count;
-    if (row._id === "absent") attendanceToday.absent = row.count;
-    if (row._id === "late") attendanceToday.late = row.count;
-    if (row._id === "half_day") attendanceToday.halfDay = row.count;
-    if (row._id === "leave") attendanceToday.leave = row.count;
-    if (row._id === "work_from_home") attendanceToday.workFromHome = row.count;
+    const count = row._count._all;
+    if (row.status === "present") attendanceToday.present = count;
+    if (row.status === "absent") attendanceToday.absent = count;
+    if (row.status === "late") attendanceToday.late = count;
+    if (row.status === "half_day") attendanceToday.halfDay = count;
+    if (row.status === "leave") attendanceToday.leave = count;
+    if (row.status === "work_from_home") attendanceToday.workFromHome = count;
   }
   const countedPresent =
     attendanceToday.present + attendanceToday.late + attendanceToday.halfDay + attendanceToday.workFromHome;
   const denom = employeesActive > 0 ? employeesActive : attendanceToday.total;
   attendanceToday.percentage =
-    denom > 0 ? Math.round((countedPresent / denom) * 100) : Math.round(attendanceAvg[0]?.avg ?? 0);
+    denom > 0 ? Math.round((countedPresent / denom) * 100) : Math.round(attendanceAvg._avg.attendancePercentage ?? 0);
+
+  const mapPayments = latestPayments.map((p) => ({
+    ...p,
+    customerId: p.customer ? { name: p.customer.name, company: p.customer.company } : p.customerId
+  }));
 
   return {
     customers: {
@@ -284,7 +283,7 @@ export async function getDashboardStats(userId: string) {
       total: employeesTotal,
       active: employeesActive,
       managers: managerCount,
-      attendancePct: attendanceToday.percentage || Math.round(attendanceAvg[0]?.avg ?? 100)
+      attendancePct: attendanceToday.percentage || Math.round(attendanceAvg._avg.attendancePercentage ?? 100)
     },
     attendance: attendanceToday,
     financials: {
@@ -302,18 +301,22 @@ export async function getDashboardStats(userId: string) {
       expenses: growthPct(monthlyExpensesValue, prevExp),
       profit: growthPct(monthlyProfitValue, prevProfit)
     },
-    tasks: { today: typeof todayTasks === "number" ? todayTasks : 0 },
+    tasks: { today: todayTasks },
     notifications: {
-      unread: Number(unreadNotifications) || 0,
-      items: Array.isArray(notifications) ? notifications : []
+      unread: unreadNotifications,
+      items: withMongoIds(serializeNested(notifications))
     },
     chartData,
-    sparks: { revenue: spark, expenses: sparkExp, profit: sparkProfit },
-    recentActivities: Array.isArray(recentActivities) ? recentActivities : [],
-    upcomingDeadlines: Array.isArray(upcomingDeadlines) ? upcomingDeadlines : [],
-    latestPayments: Array.isArray(latestPayments) ? latestPayments : [],
-    latestCustomers: Array.isArray(latestCustomers) ? latestCustomers : [],
-    latestProjects: Array.isArray(latestProjects) ? latestProjects : [],
+    sparks: {
+      revenue: chartData.map((c) => c.revenue),
+      expenses: chartData.map((c) => c.expenses),
+      profit: chartData.map((c) => c.profit)
+    },
+    recentActivities: withMongoIds(serializeNested(recentActivities)),
+    upcomingDeadlines: withMongoIds(serializeNested(upcomingDeadlines)),
+    latestPayments: withMongoIds(serializeNested(mapPayments)),
+    latestCustomers: withMongoIds(serializeNested(latestCustomers)),
+    latestProjects: withMongoIds(serializeNested(latestProjects)),
     monthlyGrowth: growthPct(monthlyRevenueValue, prevRev)
   };
 }

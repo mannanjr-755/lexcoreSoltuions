@@ -1,8 +1,6 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { connectDb } from "@/lib/db";
-import { UserModel } from "@/models/User";
-import { LoginHistoryModel } from "@/models/LoginHistory";
+import { prisma } from "@/lib/prisma";
 import { signAccessToken, signRefreshToken } from "@/lib/jwt";
 import { setAuthCookies } from "@/lib/cookies";
 import { handleApiError } from "@/lib/api-error";
@@ -54,24 +52,25 @@ export async function POST(req: Request) {
       );
     }
 
-    await connectDb();
     await ensureSuperAdmin();
 
     const email = parsed.data.email.toLowerCase();
-    const user = await UserModel.findOne({ email });
+    const user = await prisma.user.findUnique({ where: { email } });
 
     if (!user) {
       return NextResponse.json({ message: "Account not found. Check your email address." }, { status: 401 });
     }
 
     if (user.role !== "super_admin") {
-      await LoginHistoryModel.create({
-        userId: user._id,
+      await prisma.loginHistory.create({
+        data: {
+        userId: user.id,
         ipAddress,
         userAgent,
         browser,
         success: false,
         failureReason: "Only Super Admin can login"
+        }
       });
       return NextResponse.json({ message: "Access denied. Only Super Admin can login." }, { status: 403 });
     }
@@ -90,24 +89,28 @@ export async function POST(req: Request) {
 
     const isValid = await comparePassword(parsed.data.password, user.passwordHash);
     if (!isValid) {
-      user.failedLoginAttempts = (user.failedLoginAttempts ?? 0) + 1;
-      if (user.failedLoginAttempts >= LOGIN_LOCK_THRESHOLD) {
-        user.lockedUntil = new Date(Date.now() + LOGIN_LOCK_DURATION_MS);
-        user.failedLoginAttempts = 0;
-      }
-      await user.save();
+      const attempts = (user.failedLoginAttempts ?? 0) + 1;
+      await prisma.user.update({
+        where: { id: user.id },
+        data: {
+          failedLoginAttempts: attempts >= LOGIN_LOCK_THRESHOLD ? 0 : attempts,
+          lockedUntil: attempts >= LOGIN_LOCK_THRESHOLD ? new Date(Date.now() + LOGIN_LOCK_DURATION_MS) : null
+        }
+      });
 
-      await LoginHistoryModel.create({
-        userId: user._id,
+      await prisma.loginHistory.create({
+        data: {
+        userId: user.id,
         ipAddress,
         userAgent,
         browser,
         success: false,
         failureReason: "Invalid password"
+        }
       });
 
       await logActivity({
-        userId: user._id.toString(),
+        userId: user.id,
         userName: user.fullName,
         action: "failed_login",
         description: `Failed login attempt for ${user.email}`,
@@ -119,22 +122,24 @@ export async function POST(req: Request) {
       return NextResponse.json({ message: "Incorrect password." }, { status: 401 });
     }
 
-    user.failedLoginAttempts = 0;
-    user.lockedUntil = null;
-    user.lastLoginAt = new Date();
-    user.lastLoginIp = ipAddress;
-    await user.save();
+    const loggedInAt = new Date();
+    await prisma.user.update({
+      where: { id: user.id },
+      data: { failedLoginAttempts: 0, lockedUntil: null, lastLoginAt: loggedInAt, lastLoginIp: ipAddress }
+    });
 
-    await LoginHistoryModel.create({
-      userId: user._id,
+    await prisma.loginHistory.create({
+      data: {
+      userId: user.id,
       ipAddress,
       userAgent,
       browser,
       success: true
+      }
     });
 
     await logActivity({
-      userId: user._id.toString(),
+      userId: user.id,
       userName: user.fullName,
       action: "login",
       description: "Super Admin logged in",
@@ -144,7 +149,7 @@ export async function POST(req: Request) {
     });
 
     const payload = {
-      sub: user._id.toString(),
+      sub: user.id,
       role: user.role,
       email: user.email
     };
@@ -158,12 +163,12 @@ export async function POST(req: Request) {
       message: "Login successful",
       redirectTo: "/dashboard",
       user: {
-        id: user._id.toString(),
+        id: user.id,
         email: user.email,
         role: user.role,
         fullName: user.fullName,
         profilePhoto: user.profilePhoto,
-        lastLoginAt: user.lastLoginAt
+        lastLoginAt: loggedInAt
       }
     });
 

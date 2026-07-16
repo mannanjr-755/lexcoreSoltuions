@@ -1,21 +1,23 @@
 import { NextResponse } from "next/server";
-import { connectDb } from "@/lib/db";
+import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/auth";
 import { handleApiError, unauthorized } from "@/lib/api-error";
-import { AttendanceModel, calcWorkingHours, toDateKey, parseDateOnly } from "@/models/Attendance";
-import { EmployeeModel } from "@/models/Employee";
+import { calcWorkingHours, toDateKey, parseDateOnly } from "@/lib/attendance-utils";
 import { attendanceSchema } from "@/validators/modules.schema";
 import { syncEmployeeAttendancePercentage } from "@/lib/sync-attendance";
+import { withMongoId, serializeNested } from "@/lib/serialize";
 
 export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> }) {
   try {
-    const session = await getSession();
-    if (!session) return unauthorized();
-    await connectDb();
+    if (!(await getSession())) return unauthorized();
     const { id } = await ctx.params;
-    const doc = await AttendanceModel.findById(id).populate("employeeId", "fullName department employeeId").lean();
+    const doc = await prisma.attendance.findUnique({
+      where: { id },
+      include: { employee: { select: { id: true, fullName: true, department: true, employeeId: true } } }
+    });
     if (!doc) return NextResponse.json({ message: "Record not found" }, { status: 404 });
-    return NextResponse.json(doc);
+    const serialized = withMongoId(serializeNested(doc)) as Record<string, unknown> & { employee?: unknown };
+    return NextResponse.json({ ...serialized, employeeId: serialized.employee });
   } catch (error) {
     return handleApiError(error);
   }
@@ -23,72 +25,46 @@ export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> 
 
 export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }> }) {
   try {
-    const session = await getSession();
-    if (!session) return unauthorized();
-    await connectDb();
+    if (!(await getSession())) return unauthorized();
     const { id } = await ctx.params;
-    const body = await req.json();
+    const parsed = attendanceSchema.partial().safeParse(await req.json());
+    if (!parsed.success) return NextResponse.json({ message: "Validation failed", errors: parsed.error.flatten() }, { status: 400 });
 
-    const parsed = attendanceSchema.partial().safeParse(body);
-    if (!parsed.success) {
-      return NextResponse.json(
-        { message: "Validation failed", errors: parsed.error.flatten() },
-        { status: 400 }
-      );
-    }
-
-    const existing = await AttendanceModel.findById(id);
+    const existing = await prisma.attendance.findUnique({ where: { id } });
     if (!existing) return NextResponse.json({ message: "Record not found" }, { status: 404 });
-
     const data = parsed.data;
-    if (data.employeeId) {
-      const employee = await EmployeeModel.findById(data.employeeId);
-      if (!employee) return NextResponse.json({ message: "Employee not found" }, { status: 404 });
-      existing.employeeId = employee._id;
-      existing.employeeName = String(employee.fullName ?? "");
-      if (!data.department) existing.department = String(employee.department ?? "");
+    const employee = data.employeeId
+      ? await prisma.employee.findUnique({ where: { id: data.employeeId } })
+      : null;
+    if (data.employeeId && !employee) return NextResponse.json({ message: "Employee not found" }, { status: 404 });
+
+    const employeeId = employee?.id ?? existing.employeeId;
+    const dateKey = data.date ? toDateKey(data.date) : existing.dateKey;
+    if (data.date || data.employeeId) {
+      const clash = await prisma.attendance.findUnique({ where: { employeeId_dateKey: { employeeId, dateKey } } });
+      if (clash && clash.id !== id) return NextResponse.json({ message: `Attendance already exists for this employee on ${dateKey}.` }, { status: 409 });
     }
 
-    if (data.date) {
-      const date = parseDateOnly(data.date);
-      const dateKey = toDateKey(data.date);
-      const clash = await AttendanceModel.findOne({
-        _id: { $ne: existing._id },
-        employeeId: existing.employeeId,
-        dateKey
-      });
-      if (clash) {
-        return NextResponse.json(
-          { message: `Attendance already exists for this employee on ${dateKey}.` },
-          { status: 409 }
-        );
-      }
-      existing.date = date;
-      existing.dateKey = dateKey;
-    }
-
-    if (data.status) existing.status = data.status;
-    if (data.checkIn !== undefined) existing.checkIn = data.checkIn;
-    if (data.checkOut !== undefined) existing.checkOut = data.checkOut;
-    if (data.department !== undefined) existing.department = data.department;
-    if (data.remarks !== undefined) {
-      existing.remarks = data.remarks;
-      existing.notes = data.remarks;
-    }
-    if (data.notes !== undefined) {
-      existing.notes = data.notes;
-      if (data.remarks === undefined) existing.remarks = data.notes;
-    }
-
-    existing.workingHours = calcWorkingHours(existing.checkIn ?? "", existing.checkOut ?? "");
-    await existing.save();
-    await syncEmployeeAttendancePercentage(String(existing.employeeId));
-
-    const populated = await AttendanceModel.findById(existing._id)
-      .populate("employeeId", "fullName department employeeId")
-      .lean();
-
-    return NextResponse.json(populated);
+    const checkIn = data.checkIn ?? existing.checkIn;
+    const checkOut = data.checkOut ?? existing.checkOut;
+    const updated = await prisma.attendance.update({
+      where: { id },
+      data: {
+        ...(employee ? { employeeId: employee.id, employeeName: employee.fullName, department: data.department ?? employee.department } : {}),
+        ...(data.date ? { date: parseDateOnly(data.date), dateKey } : {}),
+        ...(data.status ? { status: data.status } : {}),
+        ...(data.checkIn !== undefined ? { checkIn: data.checkIn } : {}),
+        ...(data.checkOut !== undefined ? { checkOut: data.checkOut } : {}),
+        ...(data.department !== undefined ? { department: data.department } : {}),
+        ...(data.remarks !== undefined ? { remarks: data.remarks, notes: data.remarks } : {}),
+        ...(data.notes !== undefined ? { notes: data.notes, ...(data.remarks === undefined ? { remarks: data.notes } : {}) } : {}),
+        workingHours: calcWorkingHours(checkIn, checkOut)
+      },
+      include: { employee: { select: { id: true, fullName: true, department: true, employeeId: true } } }
+    });
+    await syncEmployeeAttendancePercentage(employeeId);
+    const serialized = withMongoId(serializeNested(updated)) as Record<string, unknown> & { employee?: unknown };
+    return NextResponse.json({ ...serialized, employeeId: serialized.employee });
   } catch (error) {
     return handleApiError(error);
   }
@@ -96,22 +72,12 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
 
 export async function DELETE(_req: Request, ctx: { params: Promise<{ id: string }> }) {
   try {
-    const session = await getSession();
-    if (!session) return unauthorized();
-    await connectDb();
+    if (!(await getSession())) return unauthorized();
     const { id } = await ctx.params;
-    const existing = await AttendanceModel.findById(id);
+    const existing = await prisma.attendance.findUnique({ where: { id } });
     if (!existing) return NextResponse.json({ message: "Record not found" }, { status: 404 });
-    const employeeId = String(existing.employeeId);
-    const deleted = await AttendanceModel.findByIdAndDelete(id);
-    if (!deleted) return NextResponse.json({ message: "Record not found" }, { status: 404 });
-
-    const stillThere = await AttendanceModel.exists({ _id: id });
-    if (stillThere) {
-      return NextResponse.json({ message: "Delete verification failed" }, { status: 500 });
-    }
-
-    await syncEmployeeAttendancePercentage(employeeId);
+    await prisma.attendance.delete({ where: { id } });
+    await syncEmployeeAttendancePercentage(existing.employeeId);
     return NextResponse.json({ message: "Record permanently deleted", deleted: true, id });
   } catch (error) {
     return handleApiError(error);

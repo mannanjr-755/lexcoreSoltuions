@@ -1,13 +1,17 @@
-import { ProjectModel } from "@/models/Project";
+import { prisma } from "@/lib/prisma";
 import { projectSchema } from "@/validators/modules.schema";
 import { createCrudHandlers } from "@/lib/crud-factory";
 
 const handlers = createCrudHandlers({
-  model: ProjectModel,
   entity: "project",
+  delegate: prisma.project,
   schema: projectSchema,
   searchFields: ["name", "description", "status"],
-  populate: "customerId",
+  include: { customer: { select: { id: true, name: true, company: true } } },
+  mapRow: (row) => ({
+    ...row,
+    customerId: row.customer
+  }),
   transformCreate: (data) => ({
     ...data,
     deadline: new Date(String(data.deadline)),

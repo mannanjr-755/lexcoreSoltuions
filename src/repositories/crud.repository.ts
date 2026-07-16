@@ -1,6 +1,22 @@
-import type { Model } from "mongoose";
-import { Types } from "mongoose";
-import { connectDb } from "@/lib/db";
+import type { PrismaClient } from "@prisma/client";
+import { prisma } from "@/lib/prisma";
+import { serializeNested, withMongoId, withMongoIds } from "@/lib/serialize";
+
+type PrismaModelName = {
+  [K in keyof PrismaClient]: PrismaClient[K] extends { findMany: (...args: any[]) => any } ? K : never;
+}[keyof PrismaClient];
+
+export type Delegate = {
+  findMany: (args?: any) => Promise<any[]>;
+  findUnique: (args: any) => Promise<any>;
+  findFirst: (args?: any) => Promise<any>;
+  create: (args: any) => Promise<any>;
+  update: (args: any) => Promise<any>;
+  delete: (args: any) => Promise<any>;
+  deleteMany: (args?: any) => Promise<{ count: number }>;
+  count: (args?: any) => Promise<number>;
+  updateMany?: (args: any) => Promise<{ count: number }>;
+};
 
 type ListParams = {
   page: number;
@@ -9,121 +25,106 @@ type ListParams = {
   status?: string | null;
   sort?: string;
   searchFields?: string[];
-  extraMatch?: Record<string, unknown>;
+  extraWhere?: Record<string, unknown>;
+  include?: Record<string, unknown>;
 };
 
-function assertValidId(id: string) {
-  if (!Types.ObjectId.isValid(id)) {
-    return false;
-  }
-  return true;
+function buildSearchWhere(query: string | null | undefined, searchFields: string[] = []) {
+  if (!query?.trim() || searchFields.length === 0) return {};
+  return {
+    OR: searchFields.map((field) => ({
+      [field]: { contains: query.trim(), mode: "insensitive" as const }
+    }))
+  };
 }
 
-export async function listDocuments(
-  model: Model<any>,
-  params: ListParams,
-  populate?: string | string[]
-) {
-  await connectDb();
-  const match: Record<string, unknown> = { ...(params.extraMatch ?? {}) };
-  if (params.status) match.status = params.status;
-  if (params.query && params.searchFields?.length) {
-    match.$or = params.searchFields.map((field) => ({
-      [field]: { $regex: params.query, $options: "i" }
-    }));
-  }
+export async function listDocuments(delegate: Delegate, params: ListParams) {
+  const where: Record<string, unknown> = { ...(params.extraWhere ?? {}) };
+  if (params.status) where.status = params.status;
+  Object.assign(where, buildSearchWhere(params.query, params.searchFields));
 
-  const sortField: Record<string, 1 | -1> =
+  const orderBy =
     params.sort === "name" || params.sort === "title" || params.sort === "fullName"
-      ? { [params.sort]: 1 }
-      : { createdAt: -1 };
+      ? { [params.sort]: "asc" as const }
+      : { createdAt: "desc" as const };
 
-  let query = model
-    .find(match)
-    .sort(sortField)
-    .skip((params.page - 1) * params.limit)
-    .limit(params.limit);
+  const [data, total] = await Promise.all([
+    delegate.findMany({
+      where,
+      orderBy,
+      skip: (params.page - 1) * params.limit,
+      take: params.limit,
+      include: params.include
+    }),
+    delegate.count({ where })
+  ]);
 
-  if (populate) {
-    const fields = Array.isArray(populate) ? populate : [populate];
-    for (const field of fields) query = query.populate(field);
+  return { data: withMongoIds(serializeNested(data)), total };
+}
+
+export async function createDocument(delegate: Delegate, payload: Record<string, unknown>) {
+  const created = await delegate.create({ data: payload });
+  return withMongoId(serializeNested(created));
+}
+
+export async function updateDocument(delegate: Delegate, id: string, payload: Record<string, unknown>) {
+  try {
+    const updated = await delegate.update({ where: { id }, data: payload });
+    return withMongoId(serializeNested(updated));
+  } catch {
+    return null;
   }
-
-  const [data, total] = await Promise.all([query.lean(), model.countDocuments(match)]);
-  return { data, total };
 }
 
-export async function createDocument(model: Model<any>, payload: Record<string, unknown>) {
-  await connectDb();
-  return model.create(payload as any);
-}
-
-export async function updateDocument(model: Model<any>, id: string, payload: Record<string, unknown>) {
-  await connectDb();
-  if (!assertValidId(id)) return null;
-  return model.findByIdAndUpdate(id, payload, { new: true, runValidators: true });
-}
-
-/** Permanently removes one document from MongoDB. Returns the deleted doc or null. */
-export async function removeDocument(model: Model<any>, id: string) {
-  await connectDb();
-  if (!assertValidId(id)) return null;
-
-  const deleted = await model.findByIdAndDelete(id);
-  if (!deleted) return null;
-
-  // Verify it is gone
-  const stillThere = await model.exists({ _id: id });
-  if (stillThere) {
-    throw new Error("Delete verification failed — record still exists in MongoDB");
+export async function removeDocument(delegate: Delegate, id: string) {
+  try {
+    const deleted = await delegate.delete({ where: { id } });
+    const stillThere = await delegate.findUnique({ where: { id } });
+    if (stillThere) {
+      throw new Error("Delete verification failed — record still exists in PostgreSQL");
+    }
+    return withMongoId(serializeNested(deleted));
+  } catch (error) {
+    if (error instanceof Error && error.message.includes("Delete verification")) throw error;
+    return null;
   }
-
-  return deleted;
 }
 
-/** Permanently removes many documents from MongoDB. */
-export async function removeManyDocuments(model: Model<any>, ids: string[]) {
-  await connectDb();
-  const validIds = ids.filter((id) => assertValidId(id));
-  if (validIds.length === 0) {
-    return { deletedCount: 0, acknowledged: true };
-  }
-
-  const result = await model.deleteMany({ _id: { $in: validIds } });
-
-  const remaining = await model.countDocuments({ _id: { $in: validIds } });
+export async function removeManyDocuments(delegate: Delegate, ids: string[]) {
+  if (ids.length === 0) return { count: 0 };
+  const result = await delegate.deleteMany({ where: { id: { in: ids } } });
+  const remaining = await delegate.count({ where: { id: { in: ids } } });
   if (remaining > 0) {
-    throw new Error(`Delete verification failed — ${remaining} record(s) still exist in MongoDB`);
+    throw new Error(`Delete verification failed — ${remaining} record(s) still exist`);
   }
-
   return result;
 }
 
 export async function duplicateDocument(
-  model: Model<any>,
+  delegate: Delegate,
   id: string,
   overrides: Record<string, unknown> = {}
 ) {
-  await connectDb();
-  if (!assertValidId(id)) return null;
-  const existing = await model.findById(id).lean();
-  if (!existing || Array.isArray(existing)) return null;
-  const copy = { ...(existing as Record<string, unknown>) };
-  delete copy._id;
+  const existing = await delegate.findUnique({ where: { id } });
+  if (!existing) return null;
+  const copy = { ...existing } as Record<string, unknown>;
+  delete copy.id;
   delete copy.createdAt;
   delete copy.updatedAt;
-  delete copy.__v;
   delete copy.isArchived;
-  return model.create({ ...copy, ...overrides, isArchived: false } as any);
+  const created = await delegate.create({ data: { ...copy, ...overrides, isArchived: false } });
+  return withMongoId(serializeNested(created));
 }
 
-/**
- * Permanently purge soft-archived records so they cannot reappear as "ghost" data.
- * Call once per list request for models that historically used isArchived.
- */
-export async function purgeArchivedDocuments(model: Model<any>) {
-  if (!("isArchived" in (model.schema.paths ?? {}))) return 0;
-  await connectDb();
-  const result = await model.deleteMany({ isArchived: true });
-  return result.deletedCount ?? 0;
+export async function purgeArchivedDocuments(delegate: Delegate) {
+  try {
+    const result = await delegate.deleteMany({ where: { isArchived: true } });
+    return result.count;
+  } catch {
+    return 0;
+  }
+}
+
+export function getDelegate(model: PrismaModelName): Delegate {
+  return prisma[model] as unknown as Delegate;
 }

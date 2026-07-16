@@ -1,13 +1,14 @@
-import { QuotationModel } from "@/models/Quotation";
+import { prisma } from "@/lib/prisma";
 import { quotationSchema } from "@/validators/modules.schema";
 import { createCrudHandlers } from "@/lib/crud-factory";
 
 const handlers = createCrudHandlers({
-  model: QuotationModel,
   entity: "quotation",
+  delegate: prisma.quotation,
   schema: quotationSchema,
   searchFields: ["quotationNumber"],
-  populate: "customerId",
+  include: { customer: { select: { id: true, name: true, company: true } } },
+  mapRow: (row) => ({ ...row, customerId: row.customer }),
   transformUpdate: (data) => ({
     ...data,
     ...(data.validUntil ? { validUntil: new Date(String(data.validUntil)) } : {})

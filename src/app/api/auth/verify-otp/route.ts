@@ -1,7 +1,6 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { connectDb } from "@/lib/db";
-import { UserModel } from "@/models/User";
+import { prisma } from "@/lib/prisma";
 import { handleApiError } from "@/lib/api-error";
 
 const verifyOtpSchema = z.object({
@@ -11,14 +10,15 @@ const verifyOtpSchema = z.object({
 
 export async function POST(req: Request) {
   try {
-    await connectDb();
     const body = await req.json();
     const parsed = verifyOtpSchema.safeParse(body);
     if (!parsed.success) {
       return NextResponse.json({ message: "Invalid OTP format" }, { status: 400 });
     }
 
-    const user = await UserModel.findOne({ email: parsed.data.email.toLowerCase(), role: "super_admin" });
+    const user = await prisma.user.findFirst({
+      where: { email: parsed.data.email.toLowerCase(), role: "super_admin" }
+    });
     if (!user || !user.otpCode || !user.otpExpiresAt) {
       return NextResponse.json({ message: "Invalid or expired OTP" }, { status: 400 });
     }
@@ -31,8 +31,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ message: "Invalid OTP" }, { status: 400 });
     }
 
-    user.otpVerified = true;
-    await user.save();
+    await prisma.user.update({ where: { id: user.id }, data: { otpVerified: true } });
 
     return NextResponse.json({ message: "OTP verified successfully", verified: true });
   } catch (error) {
