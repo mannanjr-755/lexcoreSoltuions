@@ -20,7 +20,14 @@ const PLACEHOLDER_PATTERNS = [
  */
 function resolveDatabaseUrl(): string {
   const raw = process.env.DATABASE_URL ?? process.env.POSTGRES_PRISMA_URL ?? process.env.POSTGRES_URL;
+  const isBuildPhase =
+    process.env.NEXT_PHASE === "phase-production-build" ||
+    process.env.NEXT_PHASE === "phase-export";
+
   if (!raw || !raw.trim()) {
+    if (isBuildPhase) {
+      return "postgresql://build:build@127.0.0.1:5432/build?schema=public";
+    }
     throw new Error(
       "DATABASE_URL is missing at runtime. In Netlify → Environment variables, set DATABASE_URL " +
         "(Neon pooled URL) for Builds AND Runtime. Do not wrap the value in quotes."
@@ -36,12 +43,14 @@ function resolveDatabaseUrl(): string {
     throw new Error("DATABASE_URL must start with postgresql:// or postgres://");
   }
 
-  for (const pattern of PLACEHOLDER_PATTERNS) {
-    if (pattern.test(url)) {
-      throw new Error(
-        "DATABASE_URL contains a placeholder (ep-xxxx / region.aws / USER:PASSWORD). " +
-          "Paste the real connection string from https://console.neon.tech → Connect."
-      );
+  if (!isBuildPhase) {
+    for (const pattern of PLACEHOLDER_PATTERNS) {
+      if (pattern.test(url)) {
+        throw new Error(
+          "DATABASE_URL contains a placeholder (ep-xxxx / region.aws / USER:PASSWORD). " +
+            "Paste the real connection string from https://console.neon.tech → Connect."
+        );
+      }
     }
   }
 

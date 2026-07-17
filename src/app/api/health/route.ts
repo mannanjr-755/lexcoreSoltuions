@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { handleApiError } from "@/lib/api-error";
+import { ensureDatabaseSchema } from "@/lib/ensure-database";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -13,11 +14,19 @@ export async function GET() {
     const { prisma } = await import("@/lib/prisma");
     await prisma.$queryRaw`SELECT 1`;
 
+    let usersExists = false;
+    try {
+      await ensureDatabaseSchema();
+      usersExists = true;
+    } catch {
+      usersExists = false;
+    }
+
     const tables = await prisma.$queryRaw<Array<{ tablename: string }>>`
       SELECT tablename FROM pg_tables WHERE schemaname = 'public' ORDER BY tablename
     `;
     const names = tables.map((t) => t.tablename);
-    const usersExists = names.includes("users");
+    usersExists = usersExists || names.includes("users");
 
     return NextResponse.json({
       status: usersExists ? "ok" : "schema_missing",

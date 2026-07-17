@@ -4,6 +4,7 @@ import { hashPassword } from "@/lib/bcrypt";
 import { getSystemSettings } from "@/services/settings.service";
 import { logger } from "@/lib/logger";
 import { Prisma } from "@prisma/client";
+import { ensureDatabaseSchema } from "@/lib/ensure-database";
 
 function isMissingUsersTable(error: unknown) {
   if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2021") {
@@ -18,6 +19,8 @@ function isMissingUsersTable(error: unknown) {
  * Creates from SUPER_ADMIN_* env vars when missing.
  */
 export async function ensureSuperAdmin() {
+  await ensureDatabaseSchema();
+
   let existing;
   try {
     existing = await prisma.user.findFirst({ where: { role: "super_admin" } });

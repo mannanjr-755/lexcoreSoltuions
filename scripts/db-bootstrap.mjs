@@ -7,6 +7,7 @@
  * 4. Fallback: prisma db push if migrations did not create schema
  * 5. Seed Super Admin + staff + departments + settings
  */
+import "./load-env.mjs";
 import { spawnSync } from "node:child_process";
 import { preparePrismaEnv } from "./prisma-env.mjs";
 

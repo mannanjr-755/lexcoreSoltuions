@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 /** Ensures Prisma generate always has DATABASE_URL + DIRECT_URL set (even dummies are rejected if invalid). */
+import "./load-env.mjs";
 import { spawnSync } from "node:child_process";
 import { preparePrismaEnv, getRawDatabaseUrl } from "./prisma-env.mjs";
 

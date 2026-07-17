@@ -4,6 +4,7 @@ import { ensureStaffEmployees } from "@/lib/ensure-staff";
 import { getSystemSettings } from "@/services/settings.service";
 import { prisma } from "@/lib/prisma";
 import { handleApiError } from "@/lib/api-error";
+import { ensureDatabaseSchema } from "@/lib/ensure-database";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -15,6 +16,8 @@ export const dynamic = "force-dynamic";
  */
 export async function POST() {
   try {
+    await ensureDatabaseSchema();
+
     // Verify schema is applied
     await prisma.$queryRaw`SELECT 1 FROM "users" LIMIT 1`;
 
