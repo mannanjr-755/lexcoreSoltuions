@@ -8,7 +8,7 @@ try {
   if (getRawDatabaseUrl()) {
     preparePrismaEnv();
   } else {
-    // generate does not need a live DB; provide safe local placeholders only for CLI parsing
+    // generate does not need a live DB; provide a local stub for Prisma CLI parsing only
     process.env.DATABASE_URL =
       process.env.DATABASE_URL ||
       "postgresql://generate:generate@127.0.0.1:5432/generate?schema=public";
