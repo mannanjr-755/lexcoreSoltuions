@@ -5,7 +5,7 @@
   "description": "Lexcore Solutions Enterprise ERP + CRM",
   "scripts": {
     "dev": "next dev",
-    "build": "node scripts/prisma-generate.mjs && node scripts/db-bootstrap.mjs && next build",
+    "build": "node scripts/netlify-build.mjs",
     "start": "next start",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
@@ -14,7 +14,7 @@
     "db:push": "prisma db push",
     "db:migrate": "node scripts/db-bootstrap.mjs",
     "db:migrate:dev": "prisma migrate dev",
-    "db:seed": "tsx prisma/seed.ts",
+    "db:seed": "node scripts/seed-admin.mjs",
     "db:setup": "node scripts/prisma-generate.mjs && node scripts/db-bootstrap.mjs",
     "db:studio": "prisma studio",
     "postinstall": "node scripts/prisma-generate.mjs"

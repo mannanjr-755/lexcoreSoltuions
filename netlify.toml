@@ -1,12 +1,11 @@
 [build]
-  # prisma generate → db-bootstrap (migrate + verify + seed) → next build
+  # netlify-build.mjs: generate → migrate (if DATABASE_URL valid) → next build
   command = "npm run build"
-  publish = ".next"
 
 [build.environment]
   NODE_VERSION = "20"
   NPM_FLAGS = "--include=dev"
-  # Give Neon cold-starts enough time during migrate deploy
+  # Neon cold-start retries during prisma migrate deploy
   PRISMA_MIGRATE_RETRIES = "6"
   PRISMA_MIGRATE_RETRY_DELAY_MS = "8000"
 

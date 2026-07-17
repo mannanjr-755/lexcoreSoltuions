@@ -5,7 +5,7 @@
  * 2. prisma migrate deploy (with retries for Neon cold-start)
  * 3. Verify public.users exists
  * 4. Fallback: prisma db push if migrations did not create schema
- * 5. Seed Super Admin + staff + departments + settings
+ * 5. Seed locally only (Netlify uses runtime ensureSuperAdmin on first login)
  */
 import "./load-env.mjs";
 import { spawnSync } from "node:child_process";
@@ -13,6 +13,7 @@ import { preparePrismaEnv } from "./prisma-env.mjs";
 
 const MAX_ATTEMPTS = Number(process.env.PRISMA_MIGRATE_RETRIES || 6);
 const DELAY_MS = Number(process.env.PRISMA_MIGRATE_RETRY_DELAY_MS || 8000);
+const isNetlifyBuild = process.env.NETLIFY === "true";
 
 function sleep(ms) {
   Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
@@ -20,7 +21,11 @@ function sleep(ms) {
 
 function run(cmd, args, label) {
   console.log(`[lexcore] ${label}`);
-  return spawnSync(cmd, args, { stdio: "inherit", env: process.env, shell: true });
+  return spawnSync(cmd, args, {
+    stdio: "inherit",
+    env: process.env,
+    shell: process.platform === "win32"
+  });
 }
 
 async function usersTableExists() {
@@ -118,7 +123,14 @@ async function main() {
   const tables = await listPublicTables();
   console.log(`[lexcore] Schema OK — ${tables.length} public tables including users`);
 
-  const seed = run("npx", ["tsx", "prisma/seed.ts"], "Seeding Super Admin + staff + settings");
+  if (isNetlifyBuild) {
+    console.log(
+      "[lexcore] Netlify build — skipping seed step. Super Admin is created automatically on first login."
+    );
+    return;
+  }
+
+  const seed = run("node", ["scripts/seed-admin.mjs"], "Seeding Super Admin + staff + settings");
   if ((seed.status ?? 1) !== 0) {
     console.error("[lexcore] Seed failed — tables exist but Super Admin was not created");
     process.exit(seed.status ?? 1);
