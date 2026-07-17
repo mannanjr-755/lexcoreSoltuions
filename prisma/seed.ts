@@ -5,7 +5,14 @@ config();
 import { PrismaClient } from "@prisma/client";
 import bcrypt from "bcryptjs";
 
-const prisma = new PrismaClient();
+const databaseUrl =
+  process.env.DIRECT_URL?.trim() ||
+  process.env.DATABASE_URL?.trim() ||
+  "postgresql://127.0.0.1:5432/lexcore";
+
+const prisma = new PrismaClient({
+  datasources: { db: { url: databaseUrl } }
+});
 
 const departments = [
   { name: "Engineering", code: "ENG", description: "Product & software delivery", managerName: "Abdul-Mannan" },

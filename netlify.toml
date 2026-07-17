@@ -1,11 +1,14 @@
 [build]
-  # migrate deploy creates public.users and all other tables on Neon before Next.js builds
+  # prisma generate → db-bootstrap (migrate + verify + seed) → next build
   command = "npm run build"
   publish = ".next"
 
 [build.environment]
   NODE_VERSION = "20"
   NPM_FLAGS = "--include=dev"
+  # Give Neon cold-starts enough time during migrate deploy
+  PRISMA_MIGRATE_RETRIES = "6"
+  PRISMA_MIGRATE_RETRY_DELAY_MS = "8000"
 
 [[plugins]]
   package = "@netlify/plugin-nextjs"

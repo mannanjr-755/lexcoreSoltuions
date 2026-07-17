@@ -46,7 +46,7 @@ export async function POST() {
       return NextResponse.json(
         {
           message:
-            "Database tables are missing. Redeploy so Netlify runs `prisma migrate deploy` (included in npm run build), then call /api/setup/seed again."
+            "Database tables are missing. Redeploy so Netlify runs db-bootstrap (migrate + verify + seed in npm run build), then call /api/setup/seed again."
         },
         { status: 503 }
       );

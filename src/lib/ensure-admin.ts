@@ -3,13 +3,32 @@ import { getEnv } from "@/lib/env";
 import { hashPassword } from "@/lib/bcrypt";
 import { getSystemSettings } from "@/services/settings.service";
 import { logger } from "@/lib/logger";
+import { Prisma } from "@prisma/client";
+
+function isMissingUsersTable(error: unknown) {
+  if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2021") {
+    return true;
+  }
+  const message = error instanceof Error ? error.message : String(error);
+  return message.includes("public.users") && message.includes("does not exist");
+}
 
 /**
  * Ensures exactly one Super Admin exists.
  * Creates from SUPER_ADMIN_* env vars when missing.
  */
 export async function ensureSuperAdmin() {
-  const existing = await prisma.user.findFirst({ where: { role: "super_admin" } });
+  let existing;
+  try {
+    existing = await prisma.user.findFirst({ where: { role: "super_admin" } });
+  } catch (error) {
+    if (isMissingUsersTable(error)) {
+      throw new Error(
+        "Database tables are missing. Run `npm run db:setup` (or redeploy on Netlify so the build applies migrations and seed)."
+      );
+    }
+    throw error;
+  }
   if (existing) return existing;
 
   const env = getEnv();

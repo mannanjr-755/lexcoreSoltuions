@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any -- generic Prisma delegate wrapper */
 import type { PrismaClient } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { serializeNested, withMongoId, withMongoIds } from "@/lib/serialize";

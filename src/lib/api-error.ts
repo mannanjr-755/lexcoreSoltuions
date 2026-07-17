@@ -22,6 +22,16 @@ export function handleApiError(error: unknown) {
     if (error.code === "P2025") {
       return NextResponse.json({ message: "Record not found" }, { status: 404 });
     }
+    if (error.code === "P2021") {
+      return NextResponse.json(
+        {
+          message:
+            "Database schema is missing (public.users not found). Redeploy the site so the build runs " +
+            "`npm run db:setup` (migrate + seed), or run `npm run db:setup` locally against your Neon database."
+        },
+        { status: 503 }
+      );
+    }
     if (error.code === "P2003") {
       return NextResponse.json({ message: "Related record not found (invalid reference)." }, { status: 400 });
     }

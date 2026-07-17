@@ -28,7 +28,7 @@ export async function GET() {
       tables: names,
       hint: usersExists
         ? undefined
-        : "Redeploy so Netlify runs prisma migrate deploy, then POST /api/setup/seed",
+        : "Redeploy so Netlify runs db-bootstrap (migrate + verify + seed), or POST /api/setup/seed after fixing DATABASE_URL",
       timestamp: new Date().toISOString()
     });
   } catch (error) {
