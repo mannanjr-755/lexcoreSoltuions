@@ -1,10 +1,10 @@
 import { prisma } from "@/lib/prisma";
-import { getEnv } from "@/lib/env";
 import { hashPassword } from "@/lib/bcrypt";
 import { getSystemSettings } from "@/services/settings.service";
 import { logger } from "@/lib/logger";
 import { Prisma } from "@prisma/client";
 import { ensureDatabaseSchema } from "@/lib/ensure-database";
+import { getSuperAdminConfig } from "@/lib/database-url";
 
 function isMissingUsersTable(error: unknown) {
   if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2021") {
@@ -16,7 +16,7 @@ function isMissingUsersTable(error: unknown) {
 
 /**
  * Ensures exactly one Super Admin exists.
- * Creates from SUPER_ADMIN_* env vars when missing.
+ * Creates from SUPER_ADMIN_* env vars (defaults: admin@lexcore.com / Lexcore@2026!).
  */
 export async function ensureSuperAdmin() {
   await ensureDatabaseSchema();
@@ -27,25 +27,20 @@ export async function ensureSuperAdmin() {
   } catch (error) {
     if (isMissingUsersTable(error)) {
       throw new Error(
-        "Database tables are missing. Run `npm run db:setup` (or redeploy on Netlify so the build applies migrations and seed)."
+        "Database tables are missing. Set NETLIFY_RUN_MIGRATIONS=true and redeploy, or POST /api/setup/seed."
       );
     }
     throw error;
   }
   if (existing) return existing;
 
-  const env = getEnv();
-  if (!env.SUPER_ADMIN_EMAIL || !env.SUPER_ADMIN_PASSWORD) {
-    throw new Error(
-      "Super Admin does not exist. Set SUPER_ADMIN_EMAIL and SUPER_ADMIN_PASSWORD in .env.local, then try again."
-    );
-  }
+  const { email, password, name } = getSuperAdminConfig();
+  const passwordHash = await hashPassword(password);
 
-  const passwordHash = await hashPassword(env.SUPER_ADMIN_PASSWORD);
   const admin = await prisma.user.create({
     data: {
-      fullName: env.SUPER_ADMIN_NAME ?? "Super Admin",
-      email: env.SUPER_ADMIN_EMAIL.toLowerCase().trim(),
+      fullName: name,
+      email,
       passwordHash,
       role: "super_admin",
       company: "Lexcore Solutions",
@@ -57,6 +52,6 @@ export async function ensureSuperAdmin() {
   });
 
   await getSystemSettings();
-  logger.info("Super Admin auto-created from environment", { email: admin.email });
+  logger.info("Super Admin auto-created", { email: admin.email });
   return admin;
 }

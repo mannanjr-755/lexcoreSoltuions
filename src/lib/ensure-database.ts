@@ -1,42 +1,12 @@
-import { execFileSync } from "node:child_process";
-import { join } from "node:path";
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
-import { logger } from "@/lib/logger";
 
 let schemaReady: Promise<void> | null = null;
 
-function prepareDirectUrl() {
-  const raw = process.env.DATABASE_URL?.trim();
-  if (!raw || process.env.DIRECT_URL?.trim()) return;
-
-  try {
-    const parsed = new URL(raw);
-    parsed.hostname = parsed.hostname.replace("-pooler.", ".");
-    parsed.searchParams.delete("pgbouncer");
-    if (!parsed.searchParams.get("sslmode")) parsed.searchParams.set("sslmode", "require");
-    if (!parsed.searchParams.get("connect_timeout")) parsed.searchParams.set("connect_timeout", "60");
-    process.env.DIRECT_URL = parsed.toString();
-  } catch {
-    process.env.DIRECT_URL = raw;
-  }
-}
-
-function runPrismaCli(args: string[], label: string) {
-  prepareDirectUrl();
-  const prismaEntry = join(process.cwd(), "node_modules", "prisma", "build", "index.js");
-  logger.warn(`[lexcore] ${label}`);
-  try {
-    execFileSync(process.execPath, [prismaEntry, ...args], {
-      env: process.env,
-      encoding: "utf-8",
-      timeout: 120_000,
-      stdio: ["ignore", "pipe", "pipe"]
-    });
-  } catch (error) {
-    const err = error as { stdout?: string; stderr?: string; message?: string };
-    const detail = [err.stderr, err.stdout, err.message].filter(Boolean).join("\n").trim();
-    throw new Error(`${label} failed.\n${detail}`);
+export class DatabaseNotReadyError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "DatabaseNotReadyError";
   }
 }
 
@@ -51,6 +21,19 @@ function isMissingUsersTable(error: unknown) {
   );
 }
 
+function isConnectionError(error: unknown) {
+  if (error instanceof Prisma.PrismaClientKnownRequestError) {
+    return error.code === "P1001" || error.code === "P1000" || error.code === "P1017";
+  }
+  const message = error instanceof Error ? error.message : String(error);
+  return (
+    message.includes("Can't reach database") ||
+    message.includes("Connection") ||
+    message.includes("ECONNREFUSED") ||
+    message.includes("ETIMEDOUT")
+  );
+}
+
 async function usersTableExists() {
   const rows = await prisma.$queryRaw<Array<{ table_name: string }>>`
     SELECT table_name
@@ -62,37 +45,28 @@ async function usersTableExists() {
 }
 
 /**
- * Ensures PostgreSQL schema exists before auth/CRUD queries.
- * Used on Netlify when build-time migrations were skipped.
+ * Verifies PostgreSQL schema exists before auth/CRUD queries.
+ * Does not spawn Prisma CLI (unsupported on Netlify serverless functions).
  */
 export async function ensureDatabaseSchema(): Promise<void> {
   if (!schemaReady) {
     schemaReady = (async () => {
-      if (await usersTableExists()) return;
-
       try {
+        if (await usersTableExists()) return;
         await prisma.$queryRaw`SELECT 1 FROM "users" LIMIT 1`;
-        return;
       } catch (error) {
-        if (!isMissingUsersTable(error)) throw error;
+        if (isConnectionError(error)) {
+          throw new DatabaseNotReadyError(
+            "Cannot connect to PostgreSQL. Verify DATABASE_URL in Netlify Runtime env (Neon pooled URL, no quotes)."
+          );
+        }
+        if (isMissingUsersTable(error)) {
+          throw new DatabaseNotReadyError(
+            "Database tables are not initialized. Run migrations via NETLIFY_RUN_MIGRATIONS=true on deploy, or POST /api/setup/seed after setting DIRECT_URL."
+          );
+        }
+        throw error;
       }
-
-      try {
-        runPrismaCli(["migrate", "deploy"], "Applying migrations (runtime)");
-      } catch (migrateError) {
-        logger.warn("Runtime migrate deploy failed, trying db push", {
-          error: migrateError instanceof Error ? migrateError.message : String(migrateError)
-        });
-        runPrismaCli(["db", "push", "--skip-generate", "--accept-data-loss"], "Syncing schema via db push");
-      }
-
-      if (!(await usersTableExists())) {
-        throw new Error(
-          "Database schema is still missing. Set DATABASE_URL and DIRECT_URL in Netlify (Runtime scope) and retry login."
-        );
-      }
-
-      logger.info("Database schema created at runtime");
     })();
   }
 

@@ -10,6 +10,7 @@ import { comparePassword } from "@/lib/bcrypt";
 import { ensureSuperAdmin } from "@/lib/ensure-admin";
 import { LOGIN_LOCK_DURATION_MS, LOGIN_LOCK_THRESHOLD } from "@/types/auth";
 import { logger } from "@/lib/logger";
+import { assertAuthEnv, getRawDatabaseUrl, assertValidDatabaseUrl } from "@/lib/database-url";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -55,6 +56,9 @@ export async function POST(req: Request) {
         { status: 400 }
       );
     }
+
+    assertValidDatabaseUrl(getRawDatabaseUrl(), "DATABASE_URL");
+    assertAuthEnv();
 
     await ensureSuperAdmin();
 

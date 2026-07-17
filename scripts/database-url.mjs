@@ -68,6 +68,7 @@ export function toPooledRuntimeUrl(anyUrl) {
 }
 
 function ensureSslAndTimeout(parsedUrl, connectTimeoutSec) {
+  parsedUrl.searchParams.delete("channel_binding");
   if (!parsedUrl.searchParams.get("sslmode")) {
     parsedUrl.searchParams.set("sslmode", "require");
   }
@@ -110,12 +111,12 @@ export function resolveRuntimeDatabaseUrl() {
 
   assertValidDatabaseUrl(raw, "DATABASE_URL");
 
-  try {
-    const parsed = new URL(raw);
-    if (!parsed.searchParams.get("sslmode")) parsed.searchParams.set("sslmode", "require");
-    if (!parsed.searchParams.get("connect_timeout")) parsed.searchParams.set("connect_timeout", "30");
-    return parsed.toString();
-  } catch {
-    throw new Error("DATABASE_URL is invalid. URL-encode special characters in the password.");
+  const parsed = new URL(raw);
+  parsed.searchParams.delete("channel_binding");
+  if (!parsed.searchParams.get("sslmode")) parsed.searchParams.set("sslmode", "require");
+  if (!parsed.searchParams.get("connect_timeout")) parsed.searchParams.set("connect_timeout", "30");
+  if (parsed.hostname.includes("-pooler.") && !parsed.searchParams.has("pgbouncer")) {
+    parsed.searchParams.set("pgbouncer", "true");
   }
+  return parsed.toString();
 }

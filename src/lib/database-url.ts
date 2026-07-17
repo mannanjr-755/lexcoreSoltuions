@@ -1,6 +1,5 @@
 /**
- * Shared PostgreSQL URL validation — no placeholder heuristics.
- * Accepts any valid postgresql:// or postgres:// URL from process.env.
+ * Shared PostgreSQL URL validation and Neon serverless normalization.
  */
 
 export function stripWrappingQuotes(value: unknown): string {
@@ -22,7 +21,7 @@ export function assertValidDatabaseUrl(url: string, label = "DATABASE_URL"): URL
   if (!url) {
     throw new Error(
       `${label} is missing. Set it in Netlify → Site configuration → Environment variables ` +
-        `(Builds + Runtime). Use your Neon connection string from https://console.neon.tech`
+        `(Runtime). Use your Neon connection string from https://console.neon.tech`
     );
   }
 
@@ -44,6 +43,34 @@ export function assertValidDatabaseUrl(url: string, label = "DATABASE_URL"): URL
   return parsed;
 }
 
+/**
+ * Neon pooler + Prisma on Netlify/serverless: channel_binding=require often breaks connections.
+ */
+export function normalizeDatabaseUrl(raw: string, options: { pooler?: boolean; connectTimeoutSec?: number } = {}) {
+  const parsed = assertValidDatabaseUrl(raw, "DATABASE_URL");
+  parsed.searchParams.delete("channel_binding");
+
+  if (!parsed.searchParams.get("sslmode")) {
+    parsed.searchParams.set("sslmode", "require");
+  }
+
+  const timeout = options.connectTimeoutSec ?? 30;
+  if (!parsed.searchParams.get("connect_timeout")) {
+    parsed.searchParams.set("connect_timeout", String(timeout));
+  }
+
+  if (options.pooler ?? parsed.hostname.includes("-pooler.")) {
+    parsed.searchParams.delete("pgbouncer");
+    if (parsed.hostname.includes("-pooler.")) {
+      parsed.searchParams.set("pgbouncer", "true");
+    }
+  } else {
+    parsed.searchParams.delete("pgbouncer");
+  }
+
+  return parsed.toString();
+}
+
 export function resolveRuntimeDatabaseUrl(): string {
   const isBuildPhase =
     process.env.NEXT_PHASE === "phase-production-build" ||
@@ -61,10 +88,31 @@ export function resolveRuntimeDatabaseUrl(): string {
     );
   }
 
-  assertValidDatabaseUrl(raw, "DATABASE_URL");
+  return normalizeDatabaseUrl(raw, { pooler: true, connectTimeoutSec: 30 });
+}
 
-  const parsed = new URL(raw);
-  if (!parsed.searchParams.get("sslmode")) parsed.searchParams.set("sslmode", "require");
-  if (!parsed.searchParams.get("connect_timeout")) parsed.searchParams.set("connect_timeout", "30");
-  return parsed.toString();
+export function assertAuthEnv(): { accessSecret: string; refreshSecret: string } {
+  const accessSecret = process.env.JWT_ACCESS_SECRET?.trim();
+  const refreshSecret = process.env.JWT_REFRESH_SECRET?.trim();
+
+  if (!accessSecret || accessSecret.length < 32) {
+    throw new Error(
+      "JWT_ACCESS_SECRET is missing or too short (min 32 chars). Set it in Netlify → Environment variables → Runtime."
+    );
+  }
+  if (!refreshSecret || refreshSecret.length < 32) {
+    throw new Error(
+      "JWT_REFRESH_SECRET is missing or too short (min 32 chars). Set it in Netlify → Environment variables → Runtime."
+    );
+  }
+
+  return { accessSecret, refreshSecret };
+}
+
+export function getSuperAdminConfig() {
+  return {
+    email: (process.env.SUPER_ADMIN_EMAIL ?? "admin@lexcore.com").toLowerCase().trim(),
+    password: process.env.SUPER_ADMIN_PASSWORD ?? "Lexcore@2026!",
+    name: process.env.SUPER_ADMIN_NAME ?? "Super Admin"
+  };
 }
