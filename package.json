@@ -16,6 +16,7 @@
     "db:migrate:dev": "prisma migrate dev",
     "db:seed": "node scripts/seed-admin.mjs",
     "db:setup": "node scripts/prisma-generate.mjs && node scripts/db-bootstrap.mjs",
+    "db:verify": "node scripts/verify-db.mjs",
     "db:studio": "prisma studio",
     "postinstall": "node scripts/prisma-generate.mjs"
   },
