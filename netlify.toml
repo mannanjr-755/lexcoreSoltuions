@@ -1,13 +1,20 @@
 [build]
-  # netlify-build.mjs: generate → migrate (if DATABASE_URL valid) → next build
+  # Compile only: prisma generate → next build (no live DB required)
+  # Schema is applied at runtime on first login, or set NETLIFY_RUN_MIGRATIONS=true
   command = "npm run build"
 
 [build.environment]
   NODE_VERSION = "20"
   NPM_FLAGS = "--include=dev"
-  # Neon cold-start retries during prisma migrate deploy
   PRISMA_MIGRATE_RETRIES = "6"
   PRISMA_MIGRATE_RETRY_DELAY_MS = "8000"
 
 [[plugins]]
   package = "@netlify/plugin-nextjs"
+
+# Required Netlify environment variables (Runtime scope minimum):
+#   DATABASE_URL  — Neon pooled connection string
+#   DIRECT_URL    — Neon direct (non-pooler) connection string
+#   JWT_ACCESS_SECRET, JWT_REFRESH_SECRET
+#   SUPER_ADMIN_EMAIL, SUPER_ADMIN_PASSWORD
+# Optional: NETLIFY_RUN_MIGRATIONS=true to run migrations during build
