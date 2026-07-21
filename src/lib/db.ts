@@ -1,13 +1,12 @@
 import { prisma } from "@/lib/prisma";
 
 export async function connectDb() {
-  // Prisma connects lazily; this warms the pool and fails fast if DATABASE_URL is bad.
-  await prisma.$queryRaw`SELECT 1`;
+  await prisma.user.findFirst({ select: { id: true } });
 }
 
 export async function isDbHealthy() {
   try {
-    await prisma.$queryRaw`SELECT 1`;
+    await prisma.user.findFirst({ select: { id: true } });
     return true;
   } catch {
     return false;

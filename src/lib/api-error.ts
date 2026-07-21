@@ -44,6 +44,13 @@ export function handleApiError(error: unknown) {
         { status: 503 }
       );
     }
+    if (error.code === "P2024") {
+      logger.error("Database connection pool timeout", { message: error.message });
+      return NextResponse.json(
+        { message: "Database is busy. Please retry in a moment." },
+        { status: 503 }
+      );
+    }
     if (error.code === "P2003") {
       return NextResponse.json({ message: "Related record not found (invalid reference)." }, { status: 400 });
     }
@@ -67,6 +74,16 @@ export function handleApiError(error: unknown) {
     }
     if (error.message.includes("SMTP")) {
       return NextResponse.json({ message: error.message }, { status: 503 });
+    }
+    if (
+      error.message.includes("Timed out fetching a new connection") ||
+      error.message.includes("connection pool")
+    ) {
+      logger.error("Prisma connection pool exhausted", { message: error.message });
+      return NextResponse.json(
+        { message: "Database is busy. Please retry in a moment." },
+        { status: 503 }
+      );
     }
 
     logger.error(error.message, { stack: error.stack });

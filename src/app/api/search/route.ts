@@ -16,7 +16,7 @@ export async function GET(req: Request) {
 
     const contains = { contains: q, mode: "insensitive" as const };
 
-    const [customers, projects, employees, payments, expenses] = await Promise.all([
+    const [customers, projects, employees, payments, expenses] = await prisma.$transaction([
       prisma.customer.findMany({ where: { OR: [{ name: contains }, { email: contains }, { company: contains }] }, take: 5, select: { id: true, name: true, email: true, company: true, customerId: true } }),
       prisma.project.findMany({ where: { name: contains }, take: 5, select: { id: true, name: true, status: true, progress: true } }),
       prisma.employee.findMany({ where: { OR: [{ fullName: contains }, { email: contains }, { employeeId: contains }] }, take: 5, select: { id: true, fullName: true, email: true, employeeId: true, department: true } }),

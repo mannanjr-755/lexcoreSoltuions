@@ -50,7 +50,7 @@ export async function getDashboardStats(userId: string) {
     notifications,
     todayAttendanceByStatus,
     todayAttendanceTotal
-  ] = await Promise.all([
+  ] = await prisma.$transaction([
     prisma.customer.aggregate({
       _count: { _all: true },
       _sum: { totalCost: true, paidAmount: true, remainingAmount: true }

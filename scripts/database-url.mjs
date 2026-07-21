@@ -67,6 +67,29 @@ export function toPooledRuntimeUrl(anyUrl) {
   return parsed.toString();
 }
 
+function applyRuntimePoolParams(parsedUrl, connectTimeoutSec = 30) {
+  parsedUrl.searchParams.delete("channel_binding");
+  if (!parsedUrl.searchParams.get("sslmode")) {
+    parsedUrl.searchParams.set("sslmode", "require");
+  }
+  if (!parsedUrl.searchParams.get("connect_timeout")) {
+    parsedUrl.searchParams.set("connect_timeout", String(connectTimeoutSec));
+  }
+  const isServerless =
+    process.env.NETLIFY === "true" ||
+    process.env.AWS_LAMBDA_FUNCTION_NAME ||
+    process.env.VERCEL === "1";
+  if (!parsedUrl.searchParams.has("connection_limit")) {
+    parsedUrl.searchParams.set("connection_limit", isServerless ? "1" : "5");
+  }
+  if (!parsedUrl.searchParams.has("pool_timeout")) {
+    parsedUrl.searchParams.set("pool_timeout", isServerless ? "30" : "20");
+  }
+  if (parsedUrl.hostname.includes("-pooler.") && !parsedUrl.searchParams.has("pgbouncer")) {
+    parsedUrl.searchParams.set("pgbouncer", "true");
+  }
+}
+
 function ensureSslAndTimeout(parsedUrl, connectTimeoutSec) {
   parsedUrl.searchParams.delete("channel_binding");
   if (!parsedUrl.searchParams.get("sslmode")) {
@@ -112,11 +135,6 @@ export function resolveRuntimeDatabaseUrl() {
   assertValidDatabaseUrl(raw, "DATABASE_URL");
 
   const parsed = new URL(raw);
-  parsed.searchParams.delete("channel_binding");
-  if (!parsed.searchParams.get("sslmode")) parsed.searchParams.set("sslmode", "require");
-  if (!parsed.searchParams.get("connect_timeout")) parsed.searchParams.set("connect_timeout", "30");
-  if (parsed.hostname.includes("-pooler.") && !parsed.searchParams.has("pgbouncer")) {
-    parsed.searchParams.set("pgbouncer", "true");
-  }
+  applyRuntimePoolParams(parsed, 30);
   return parsed.toString();
 }

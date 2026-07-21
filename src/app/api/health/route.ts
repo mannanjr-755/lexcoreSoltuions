@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { handleApiError } from "@/lib/api-error";
-import { ensureDatabaseSchema } from "@/lib/ensure-database";
+import { prisma } from "@/lib/prisma";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -11,33 +11,20 @@ export async function GET() {
       process.env.DATABASE_URL || process.env.POSTGRES_PRISMA_URL || process.env.POSTGRES_URL
     );
 
-    const { prisma } = await import("@/lib/prisma");
-    await prisma.$queryRaw`SELECT 1`;
-
-    let usersExists = false;
-    try {
-      await ensureDatabaseSchema();
-      usersExists = true;
-    } catch {
-      usersExists = false;
-    }
-
-    const tables = await prisma.$queryRaw<Array<{ tablename: string }>>`
-      SELECT tablename FROM pg_tables WHERE schemaname = 'public' ORDER BY tablename
-    `;
-    const names = tables.map((t) => t.tablename);
-    usersExists = usersExists || names.includes("users");
+    const user = await prisma.user.findFirst({
+      select: { id: true },
+      where: { role: "super_admin" }
+    });
 
     return NextResponse.json({
-      status: usersExists ? "ok" : "schema_missing",
+      status: user ? "ok" : "schema_missing",
       postgresql: "connected",
       databaseUrlConfigured: hasDatabaseUrl,
-      usersTableExists: usersExists,
-      tableCount: names.length,
-      tables: names,
-      hint: usersExists
+      usersTableExists: Boolean(user),
+      superAdminExists: Boolean(user),
+      hint: user
         ? undefined
-        : "Redeploy so Netlify runs db-bootstrap (migrate + verify + seed), or POST /api/setup/seed after fixing DATABASE_URL",
+        : "Run NETLIFY_RUN_MIGRATIONS=true on deploy, or POST /api/setup/seed",
       timestamp: new Date().toISOString()
     });
   } catch (error) {

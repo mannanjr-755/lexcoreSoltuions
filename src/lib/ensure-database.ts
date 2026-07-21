@@ -28,41 +28,41 @@ function isConnectionError(error: unknown) {
   const message = error instanceof Error ? error.message : String(error);
   return (
     message.includes("Can't reach database") ||
-    message.includes("Connection") ||
+    message.includes("connection pool") ||
+    message.includes("Timed out fetching a new connection") ||
     message.includes("ECONNREFUSED") ||
     message.includes("ETIMEDOUT")
   );
 }
 
 async function usersTableExists() {
-  const rows = await prisma.$queryRaw<Array<{ table_name: string }>>`
-    SELECT table_name
-    FROM information_schema.tables
-    WHERE table_schema = 'public' AND table_name = 'users'
-    LIMIT 1
-  `;
-  return rows.length > 0;
+  try {
+    await prisma.user.findFirst({ select: { id: true } });
+    return true;
+  } catch (error) {
+    if (isMissingUsersTable(error)) return false;
+    throw error;
+  }
 }
 
 /**
  * Verifies PostgreSQL schema exists before auth/CRUD queries.
- * Does not spawn Prisma CLI (unsupported on Netlify serverless functions).
  */
 export async function ensureDatabaseSchema(): Promise<void> {
   if (!schemaReady) {
     schemaReady = (async () => {
       try {
-        if (await usersTableExists()) return;
-        await prisma.$queryRaw`SELECT 1 FROM "users" LIMIT 1`;
+        const exists = await usersTableExists();
+        if (!exists) {
+          throw new DatabaseNotReadyError(
+            "Database tables are not initialized. Set NETLIFY_RUN_MIGRATIONS=true on deploy, or POST /api/setup/seed after setting DIRECT_URL."
+          );
+        }
       } catch (error) {
+        if (error instanceof DatabaseNotReadyError) throw error;
         if (isConnectionError(error)) {
           throw new DatabaseNotReadyError(
             "Cannot connect to PostgreSQL. Verify DATABASE_URL in Netlify Runtime env (Neon pooled URL, no quotes)."
-          );
-        }
-        if (isMissingUsersTable(error)) {
-          throw new DatabaseNotReadyError(
-            "Database tables are not initialized. Run migrations via NETLIFY_RUN_MIGRATIONS=true on deploy, or POST /api/setup/seed after setting DIRECT_URL."
           );
         }
         throw error;

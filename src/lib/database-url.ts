@@ -45,8 +45,12 @@ export function assertValidDatabaseUrl(url: string, label = "DATABASE_URL"): URL
 
 /**
  * Neon pooler + Prisma on Netlify/serverless: channel_binding=require often breaks connections.
+ * Serverless: keep connection_limit low (one client per function instance).
  */
-export function normalizeDatabaseUrl(raw: string, options: { pooler?: boolean; connectTimeoutSec?: number } = {}) {
+export function normalizeDatabaseUrl(
+  raw: string,
+  options: { pooler?: boolean; connectTimeoutSec?: number; connectionLimit?: number; poolTimeoutSec?: number } = {}
+) {
   const parsed = assertValidDatabaseUrl(raw, "DATABASE_URL");
   parsed.searchParams.delete("channel_binding");
 
@@ -54,9 +58,25 @@ export function normalizeDatabaseUrl(raw: string, options: { pooler?: boolean; c
     parsed.searchParams.set("sslmode", "require");
   }
 
-  const timeout = options.connectTimeoutSec ?? 30;
+  const connectTimeout = options.connectTimeoutSec ?? 30;
   if (!parsed.searchParams.get("connect_timeout")) {
-    parsed.searchParams.set("connect_timeout", String(timeout));
+    parsed.searchParams.set("connect_timeout", String(connectTimeout));
+  }
+
+  const isServerless =
+    process.env.NETLIFY === "true" ||
+    process.env.AWS_LAMBDA_FUNCTION_NAME ||
+    process.env.VERCEL === "1";
+
+  const defaultLimit = isServerless ? 1 : 5;
+  const limit = options.connectionLimit ?? defaultLimit;
+  if (!parsed.searchParams.has("connection_limit")) {
+    parsed.searchParams.set("connection_limit", String(limit));
+  }
+
+  const poolTimeout = options.poolTimeoutSec ?? (isServerless ? 30 : 20);
+  if (!parsed.searchParams.has("pool_timeout")) {
+    parsed.searchParams.set("pool_timeout", String(poolTimeout));
   }
 
   if (options.pooler ?? parsed.hostname.includes("-pooler.")) {

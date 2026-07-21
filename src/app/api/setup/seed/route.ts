@@ -18,9 +18,6 @@ export async function POST() {
   try {
     await ensureDatabaseSchema();
 
-    // Verify schema is applied
-    await prisma.$queryRaw`SELECT 1 FROM "users" LIMIT 1`;
-
     const admin = await ensureSuperAdmin();
     await ensureStaffEmployees();
     await getSystemSettings();
@@ -60,16 +57,11 @@ export async function POST() {
 
 export async function GET() {
   try {
-    const tables = await prisma.$queryRaw<Array<{ tablename: string }>>`
-      SELECT tablename FROM pg_tables WHERE schemaname = 'public' ORDER BY tablename
-    `;
-    const userCount = tables.some((t) => t.tablename === "users")
-      ? await prisma.user.count()
-      : -1;
+    const userCount = await prisma.user.count();
+    const usersTableExists = userCount >= 0;
 
     return NextResponse.json({
-      tables: tables.map((t) => t.tablename),
-      usersTableExists: tables.some((t) => t.tablename === "users"),
+      usersTableExists,
       userCount
     });
   } catch (error) {
