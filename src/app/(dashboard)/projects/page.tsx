@@ -24,7 +24,7 @@ export default function ProjectsPage() {
   return (
     <ModuleCrudPage
       title="Projects"
-      subtitle="Manage delivery pipeline with live MongoDB records"
+      subtitle="Manage delivery pipeline with live PostgreSQL records"
       endpoint="/api/projects"
       queryKey="projects"
       exportName="projects"
@@ -67,7 +67,10 @@ export default function ProjectsPage() {
           name: "customerId",
           label: "Customer",
           type: "select",
-          options: customerOptions.length ? customerOptions : [{ label: "No customers", value: "" }]
+          required: true,
+          options: customerOptions.length
+            ? customerOptions
+            : [{ label: "Create a customer first", value: "" }]
         },
         {
           name: "status",
@@ -98,17 +101,24 @@ export default function ProjectsPage() {
         { name: "deadline", label: "Deadline", type: "date" },
         { name: "description", label: "Description", type: "textarea" }
       ]}
-      mapRowToForm={(row) => ({
-        name: row.name,
-        customerId: typeof row.customerId === "object" && row.customerId ? (row.customerId as { _id: string })._id : row.customerId,
-        description: row.description ?? "",
-        status: row.status,
-        priority: row.priority,
-        progress: row.progress ?? 0,
-        budget: row.budget ?? 0,
-        spent: row.spent ?? 0,
-        deadline: String(row.deadline ?? "").slice(0, 10)
-      })}
+      mapRowToForm={(row) => {
+        const customer = row.customerId as { _id?: string; id?: string } | string | undefined;
+        const customerId =
+          typeof customer === "object" && customer
+            ? customer._id ?? customer.id ?? ""
+            : String(customer ?? "");
+        return {
+          name: row.name,
+          customerId,
+          description: row.description ?? "",
+          status: row.status,
+          priority: row.priority,
+          progress: row.progress ?? 0,
+          budget: row.budget ?? 0,
+          spent: row.spent ?? 0,
+          deadline: String(row.deadline ?? "").slice(0, 10)
+        };
+      }}
     />
   );
 }

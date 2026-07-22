@@ -26,7 +26,7 @@ export default function PayrollPage() {
   return (
     <ModuleCrudPage
       title="Payroll"
-      subtitle="Salary processing stored in MongoDB"
+      subtitle="Salary processing"
       endpoint="/api/payroll"
       queryKey="payroll"
       exportName="payroll"

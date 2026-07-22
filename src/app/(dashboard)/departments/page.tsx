@@ -6,7 +6,7 @@ export default function DepartmentsPage() {
   return (
     <ModuleCrudPage
       title="Departments"
-      subtitle="Organize teams — synced with MongoDB and used by Attendance & Employees"
+      subtitle="Organize teams — used by Attendance & Employees"
       endpoint="/api/departments"
       queryKey="departments"
       exportName="departments"

@@ -33,7 +33,14 @@ export async function POST(req: Request) {
     const body = await req.json();
     const parsed = customerCreateSchema.safeParse(body);
     if (!parsed.success) {
-      return NextResponse.json({ message: "Validation failed", errors: parsed.error.flatten() }, { status: 400 });
+      const first = parsed.error.issues[0];
+      return NextResponse.json(
+        {
+          message: first ? `${first.path.join(".") || "field"}: ${first.message}` : "Validation failed",
+          errors: parsed.error.flatten()
+        },
+        { status: 400 }
+      );
     }
 
     const assignedManager = parsed.data.assignedManager || session.id;

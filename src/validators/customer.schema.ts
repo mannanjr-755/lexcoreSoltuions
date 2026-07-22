@@ -13,7 +13,7 @@ export const customerCreateSchema = z.object({
   projectName: z.string().min(2, "Project name is required"),
   projectType: z.string().min(2, "Project type is required"),
   technology: z.array(z.string()).optional(),
-  assignedManager: z.string().regex(/^[a-f\d]{24}$/i).optional(),
+  assignedManager: z.string().min(1).optional(),
   totalCost: z.number().nonnegative("Total cost must be >= 0"),
   advancePaid: z.number().nonnegative().optional(),
   paidAmount: z.number().nonnegative().optional(),

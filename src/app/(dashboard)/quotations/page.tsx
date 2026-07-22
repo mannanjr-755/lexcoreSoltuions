@@ -24,7 +24,7 @@ export default function QuotationsPage() {
   return (
     <ModuleCrudPage
       title="Quotations"
-      subtitle="Sales quotations backed by MongoDB"
+      subtitle="Sales quotations"
       endpoint="/api/quotations"
       queryKey="quotations"
       exportName="quotations"
@@ -60,7 +60,8 @@ export default function QuotationsPage() {
           name: "customerId",
           label: "Customer",
           type: "select",
-          options: customerOptions.length ? customerOptions : [{ label: "No customers", value: "" }]
+          required: true,
+          options: customerOptions.length ? customerOptions : [{ label: "Create a customer first", value: "" }]
         },
         { name: "title", label: "Title", required: true },
         { name: "amount", label: "Amount", type: "number" },

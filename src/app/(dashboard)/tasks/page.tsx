@@ -7,7 +7,7 @@ export default function TasksPage() {
   return (
     <ModuleCrudPage
       title="Tasks"
-      subtitle="Operational tasks stored in MongoDB"
+      subtitle="Operational tasks"
       endpoint="/api/tasks"
       queryKey="tasks"
       exportName="tasks"

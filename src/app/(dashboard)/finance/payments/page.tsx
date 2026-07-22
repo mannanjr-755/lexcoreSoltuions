@@ -25,7 +25,7 @@ export default function PaymentsPage() {
   return (
     <ModuleCrudPage
       title="Payments"
-      subtitle="Track customer payments and invoice settlements in MongoDB"
+      subtitle="Track customer payments and invoice settlements"
       endpoint="/api/payments"
       queryKey="payments"
       exportName="payments"
@@ -70,7 +70,8 @@ export default function PaymentsPage() {
           name: "customerId",
           label: "Customer",
           type: "select",
-          options: customerOptions.length ? customerOptions : [{ label: "No customers", value: "" }]
+          required: true,
+          options: customerOptions.length ? customerOptions : [{ label: "Create a customer first", value: "" }]
         },
         { name: "amount", label: "Amount", type: "number" },
         { name: "tax", label: "Tax", type: "number" },

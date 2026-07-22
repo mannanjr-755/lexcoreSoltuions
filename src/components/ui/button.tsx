@@ -39,7 +39,7 @@ export interface ButtonProps
 }
 
 export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
-  ({ className, variant, size, loading, children, disabled, onClick, ...props }, ref) => {
+  ({ className, variant, size, loading, children, disabled, onClick, type = "button", ...props }, ref) => {
     const handleClick = (e: MouseEvent<HTMLButtonElement>) => {
       const rect = e.currentTarget.getBoundingClientRect();
       e.currentTarget.style.setProperty("--x", `${e.clientX - rect.left}px`);
@@ -50,6 +50,7 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
     return (
       <button
         ref={ref}
+        type={type}
         className={cn(buttonVariants({ variant, size }), className)}
         disabled={disabled || loading}
         onClick={handleClick}

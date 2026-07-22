@@ -102,8 +102,7 @@ export default function CustomersPage() {
       priority: "medium",
       status: "lead",
       notes: "",
-      technology: [],
-      assignedManager: user?.id
+      technology: []
     });
     setModalOpen(true);
   };
@@ -124,8 +123,7 @@ export default function CustomersPage() {
       priority: customer.priority as CustomerCreateInput["priority"],
       status: customer.status as CustomerCreateInput["status"],
       notes: customer.notes ?? "",
-      technology: [],
-      assignedManager: user?.id
+      technology: []
     });
     setModalOpen(true);
   };
@@ -137,21 +135,31 @@ export default function CustomersPage() {
         totalCost: Number(values.totalCost),
         advancePaid: Number(values.advancePaid ?? 0),
         paidAmount: Number(values.paidAmount ?? 0),
-        assignedManager: values.assignedManager || user?.id
+        assignedManager: user?.id
       };
       if (editing) {
         return api.patch(`/api/crm/customers/${editing._id}`, payload);
       }
       return api.post("/api/crm/customers", payload);
     },
-    onSuccess: () => {
-      toast.success(editing ? "Customer updated" : "Customer created");
+    onSuccess: async () => {
+      toast.success(editing ? "Customer updated" : "Customer created successfully");
       setModalOpen(false);
-      queryClient.invalidateQueries({ queryKey: ["customers"] });
-      queryClient.invalidateQueries({ queryKey: ["dashboard-stats"] });
+      setEditing(null);
+      form.reset();
+      setPage(1);
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["customers"] }),
+        queryClient.invalidateQueries({ queryKey: ["dashboard-stats"] }),
+        queryClient.refetchQueries({ queryKey: ["customers"], type: "active" }),
+        queryClient.refetchQueries({ queryKey: ["dashboard-stats"], type: "active" })
+      ]);
     },
     onError: (err) => {
-      toast.error(isAxiosError(err) ? err.response?.data?.message ?? "Save failed" : "Save failed");
+      const message = isAxiosError(err)
+        ? err.response?.data?.message ?? "Save failed"
+        : "Save failed";
+      toast.error(message);
     }
   });
 
@@ -277,7 +285,7 @@ export default function CustomersPage() {
         {isLoading ? (
           <TableSkeleton />
         ) : isError ? (
-          <div className="p-8 text-center text-red-400">Failed to load customers. Check MongoDB connection.</div>
+          <div className="p-8 text-center text-red-400">Failed to load customers. Check database connection.</div>
         ) : customers.length === 0 ? (
           <EmptyState
             title="No customers yet"
@@ -358,30 +366,42 @@ export default function CustomersPage() {
               </CardTitle>
             </CardHeader>
             <CardContent>
-              <form onSubmit={form.handleSubmit((values) => saveMutation.mutate(values))} className="grid gap-4 sm:grid-cols-2">
+              <form
+                onSubmit={form.handleSubmit(
+                  (values) => saveMutation.mutate(values),
+                  () => toast.error("Please fix the highlighted form fields")
+                )}
+                className="grid gap-4 sm:grid-cols-2"
+                noValidate
+              >
                 <div className="space-y-2">
-                  <Label>Name</Label>
+                  <Label>Name *</Label>
                   <Input {...form.register("name")} />
-                  {form.formState.errors.name ? <p className="text-xs text-red-400">{form.formState.errors.name.message}</p> : null}
+                  {form.formState.errors.name ? <p className="text-xs text-red-500">{form.formState.errors.name.message}</p> : null}
                 </div>
                 <div className="space-y-2">
-                  <Label>Email</Label>
+                  <Label>Email *</Label>
                   <Input type="email" {...form.register("email")} />
+                  {form.formState.errors.email ? <p className="text-xs text-red-500">{form.formState.errors.email.message}</p> : null}
                 </div>
                 <div className="space-y-2">
-                  <Label>Phone</Label>
+                  <Label>Phone *</Label>
                   <Input {...form.register("phone")} />
+                  {form.formState.errors.phone ? <p className="text-xs text-red-500">{form.formState.errors.phone.message}</p> : null}
                 </div>
                 <div className="space-y-2">
                   <Label>Company</Label>
                   <Input {...form.register("company")} />
                 </div>
                 <div className="space-y-2">
-                  <Label>Project Name</Label>
+                  <Label>Project Name *</Label>
                   <Input {...form.register("projectName")} />
+                  {form.formState.errors.projectName ? (
+                    <p className="text-xs text-red-500">{form.formState.errors.projectName.message}</p>
+                  ) : null}
                 </div>
                 <div className="space-y-2">
-                  <Label>Project Type</Label>
+                  <Label>Project Type *</Label>
                   <Input {...form.register("projectType")} />
                 </div>
                 <div className="space-y-2">
@@ -397,12 +417,15 @@ export default function CustomersPage() {
                   <Input type="number" step="0.01" {...form.register("paidAmount", { valueAsNumber: true })} />
                 </div>
                 <div className="space-y-2">
-                  <Label>Deadline</Label>
+                  <Label>Deadline *</Label>
                   <Input type="date" {...form.register("projectDeadline")} />
+                  {form.formState.errors.projectDeadline ? (
+                    <p className="text-xs text-red-500">{form.formState.errors.projectDeadline.message}</p>
+                  ) : null}
                 </div>
                 <div className="space-y-2">
                   <Label>Status</Label>
-                  <select className="h-11 w-full rounded-xl border border-[#E2E8F0] bg-[#F1F5F9] px-4 text-sm" {...form.register("status")}>
+                  <select className="h-11 w-full rounded-xl border border-[#E2E8F0] bg-white px-4 text-sm" {...form.register("status")}>
                     <option value="lead">Lead</option>
                     <option value="active">Active</option>
                     <option value="on_hold">On Hold</option>
@@ -412,7 +435,7 @@ export default function CustomersPage() {
                 </div>
                 <div className="space-y-2">
                   <Label>Priority</Label>
-                  <select className="h-11 w-full rounded-xl border border-[#E2E8F0] bg-[#F1F5F9] px-4 text-sm" {...form.register("priority")}>
+                  <select className="h-11 w-full rounded-xl border border-[#E2E8F0] bg-white px-4 text-sm" {...form.register("priority")}>
                     <option value="low">Low</option>
                     <option value="medium">Medium</option>
                     <option value="high">High</option>

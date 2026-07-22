@@ -92,7 +92,14 @@ export function createCrudHandlers(config: CrudConfig) {
 
       const parsed = config.schema.safeParse(body);
       if (!parsed.success) {
-        return NextResponse.json({ message: "Validation failed", errors: parsed.error.flatten() }, { status: 400 });
+        const first = parsed.error.issues[0];
+        return NextResponse.json(
+          {
+            message: first ? `${first.path.join(".") || "field"}: ${first.message}` : "Validation failed",
+            errors: parsed.error.flatten()
+          },
+          { status: 400 }
+        );
       }
 
       let payload = parsed.data as Record<string, unknown>;

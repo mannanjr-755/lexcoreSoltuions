@@ -29,7 +29,7 @@ export default function EmployeesPage() {
   return (
     <ModuleCrudPage
       title="Employees"
-      subtitle="HR directory synced with MongoDB — new employees appear in Attendance automatically"
+      subtitle="HR directory — new employees appear in Attendance automatically"
       endpoint="/api/employees"
       queryKey="employees"
       exportName="employees"

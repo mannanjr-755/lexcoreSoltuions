@@ -24,7 +24,7 @@ export default function InvoicesPage() {
   return (
     <ModuleCrudPage
       title="Invoices"
-      subtitle="Payments and receivables from MongoDB"
+      subtitle="Payments and receivables"
       endpoint="/api/payments"
       queryKey="payments"
       exportName="invoices"
@@ -67,7 +67,8 @@ export default function InvoicesPage() {
           name: "customerId",
           label: "Customer",
           type: "select",
-          options: customerOptions.length ? customerOptions : [{ label: "No customers", value: "" }]
+          required: true,
+          options: customerOptions.length ? customerOptions : [{ label: "Create a customer first", value: "" }]
         },
         { name: "amount", label: "Amount", type: "number" },
         { name: "tax", label: "Tax", type: "number" },

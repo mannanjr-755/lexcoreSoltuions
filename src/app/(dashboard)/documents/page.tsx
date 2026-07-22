@@ -6,7 +6,7 @@ export default function DocumentsPage() {
   return (
     <ModuleCrudPage
       title="Documents"
-      subtitle="Document registry stored in MongoDB"
+      subtitle="Document registry"
       endpoint="/api/documents"
       queryKey="documents"
       exportName="documents"

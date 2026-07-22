@@ -7,7 +7,7 @@ export default function ExpensesPage() {
   return (
     <ModuleCrudPage
       title="Expenses"
-      subtitle="Track operating costs from MongoDB"
+      subtitle="Track operating costs"
       endpoint="/api/expenses"
       queryKey="expenses"
       exportName="expenses"
