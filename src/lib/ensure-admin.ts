@@ -16,7 +16,7 @@ function isMissingUsersTable(error: unknown) {
 
 /**
  * Ensures exactly one admin exists.
- * Creates from SUPER_ADMIN_* env vars (defaults: admin@lexcore.com / Lexcore@2026!).
+ * Creates from SUPER_ADMIN_* env vars (defaults: admin@lexcore.com / Admin@Lexcore1!).
  */
 export async function ensureSuperAdmin() {
   await ensureDatabaseSchema();

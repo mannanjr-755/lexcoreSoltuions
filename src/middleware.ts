@@ -3,12 +3,9 @@ import type { NextRequest } from "next/server";
 import { ACCESS_COOKIE, REFRESH_COOKIE } from "@/lib/cookies";
 import { isAuthorizedEmail } from "@/lib/authorized-users";
 
-const publicPaths = ["/login", "/forgot-password", "/reset-password", "/unauthorized"];
+const publicPaths = ["/login", "/unauthorized"];
 const publicApiPaths = [
   "/api/auth/login",
-  "/api/auth/forgot-password",
-  "/api/auth/verify-otp",
-  "/api/auth/reset-password",
   "/api/setup/seed",
   "/api/health"
 ];

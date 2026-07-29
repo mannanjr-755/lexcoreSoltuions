@@ -43,13 +43,27 @@ export function assertValidDatabaseUrl(url: string, label = "DATABASE_URL"): URL
   return parsed;
 }
 
+export function isServerlessRuntime(): boolean {
+  return Boolean(
+    process.env.NETLIFY === "true" ||
+      process.env.AWS_LAMBDA_FUNCTION_NAME ||
+      process.env.VERCEL === "1"
+  );
+}
+
 /**
  * Neon pooler + Prisma on Netlify/serverless: channel_binding=require often breaks connections.
+ * Local Next.js shares one Prisma client across concurrent API routes — use a larger pool.
  * Serverless: keep connection_limit low (one client per function instance).
  */
 export function normalizeDatabaseUrl(
   raw: string,
-  options: { pooler?: boolean; connectTimeoutSec?: number; connectionLimit?: number; poolTimeoutSec?: number } = {}
+  options: {
+    pooler?: boolean;
+    connectTimeoutSec?: number;
+    connectionLimit?: number;
+    poolTimeoutSec?: number;
+  } = {}
 ) {
   const parsed = assertValidDatabaseUrl(raw, "DATABASE_URL");
   parsed.searchParams.delete("channel_binding");
@@ -63,20 +77,22 @@ export function normalizeDatabaseUrl(
     parsed.searchParams.set("connect_timeout", String(connectTimeout));
   }
 
-  const isServerless =
-    process.env.NETLIFY === "true" ||
-    process.env.AWS_LAMBDA_FUNCTION_NAME ||
-    process.env.VERCEL === "1";
-
-  const defaultLimit = isServerless ? 1 : 5;
+  const serverless = isServerlessRuntime();
+  // Local/dev: higher limit so concurrent page loads (auth + dashboard + chat) do not exhaust the pool.
+  const defaultLimit = serverless ? 1 : 10;
   const limit = options.connectionLimit ?? defaultLimit;
   if (!parsed.searchParams.has("connection_limit")) {
     parsed.searchParams.set("connection_limit", String(limit));
   }
 
-  const poolTimeout = options.poolTimeoutSec ?? (isServerless ? 30 : 20);
+  const poolTimeout = options.poolTimeoutSec ?? (serverless ? 60 : 30);
   if (!parsed.searchParams.has("pool_timeout")) {
     parsed.searchParams.set("pool_timeout", String(poolTimeout));
+  }
+
+  // Avoid statement cache issues with PgBouncer transaction pooling.
+  if (!parsed.searchParams.has("statement_cache_size")) {
+    parsed.searchParams.set("statement_cache_size", "0");
   }
 
   if (options.pooler ?? parsed.hostname.includes("-pooler.")) {
@@ -130,9 +146,25 @@ export function assertAuthEnv(): { accessSecret: string; refreshSecret: string }
 }
 
 export function getSuperAdminConfig() {
+  const email = (process.env.SUPER_ADMIN_EMAIL ?? "admin@lexcore.com").toLowerCase().trim();
+  const authPassword = process.env.AUTH_PASSWORD_ADMIN?.trim();
+  const superAdminPassword = process.env.SUPER_ADMIN_PASSWORD?.trim();
+  const legacy = new Set(["Lexcore@2026!", "Lexcore@2026", "admin123", "Admin123!"]);
+
+  let password = "Admin@Lexcore1!";
+  if (authPassword && authPassword.length >= 8) {
+    password = authPassword;
+  } else if (
+    superAdminPassword &&
+    superAdminPassword.length >= 8 &&
+    !legacy.has(superAdminPassword)
+  ) {
+    password = superAdminPassword;
+  }
+
   return {
-    email: (process.env.SUPER_ADMIN_EMAIL ?? "admin@lexcore.com").toLowerCase().trim(),
-    password: process.env.SUPER_ADMIN_PASSWORD ?? "Lexcore@2026!",
+    email,
+    password,
     name: process.env.SUPER_ADMIN_NAME ?? "Admin"
   };
 }

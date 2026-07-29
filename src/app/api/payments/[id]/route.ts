@@ -8,7 +8,7 @@ const handlers = createCrudHandlers({
   schema: paymentSchema,
   searchFields: ["invoiceNumber"],
   include: {
-    customer: { select: { id: true, name: true, company: true } },
+    customer: { select: { id: true, name: true, phone: true } },
     project: { select: { id: true, name: true } }
   },
   mapRow: (row) => ({ ...row, customerId: row.customer, projectId: row.project ?? row.projectId }),

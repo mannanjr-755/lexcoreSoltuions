@@ -26,6 +26,8 @@ export async function getDashboardStats() {
   const dayEnd = new Date();
   dayEnd.setHours(23, 59, 59, 999);
 
+  // Sequential interactive batch keeps a single connection for the whole fan-out,
+  // avoiding pool exhaustion when the dashboard loads alongside other APIs.
   const [
     customerAgg,
     projectGroups,
@@ -105,7 +107,7 @@ export async function getDashboardStats() {
     prisma.customer.findMany({
       orderBy: { createdAt: "desc" },
       take: 6,
-      select: { id: true, name: true, status: true, createdAt: true, totalCost: true }
+      select: { id: true, name: true, phone: true, status: true, createdAt: true, totalCost: true }
     }),
     prisma.project.findMany({
       orderBy: { createdAt: "desc" },

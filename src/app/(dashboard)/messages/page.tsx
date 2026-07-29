@@ -29,8 +29,9 @@ export default function MessagesPage() {
     [user?.email]
   );
 
-  const currentUserId = currentMember?.id ?? "admin";
+  const currentUserId = user?.id ?? "";
   const isAdmin = (user?.email ?? "").toLowerCase() === "admin@lexcore.com";
+  const [clearChatLoading, setClearChatLoading] = useState(false);
 
   const fetchMessages = useCallback(async () => {
     const response = await api.get("/api/messages");
@@ -87,6 +88,9 @@ export default function MessagesPage() {
       const payload = JSON.parse((event as MessageEvent<string>).data) as { messageId: string };
       setMsgs((prev) => prev.filter((item) => item.id !== payload.messageId));
     });
+    source.addEventListener("messages.cleared", () => {
+      setMsgs([]);
+    });
     source.addEventListener("typing", (event) => {
       const payload = JSON.parse((event as MessageEvent<string>).data) as { email: string; isTyping: boolean };
       setTypingUsers((prev) => {
@@ -109,19 +113,42 @@ export default function MessagesPage() {
   }, []);
 
   const handleSend = useCallback(async (payload: { text: string; attachments: Attachment[]; replyToId?: string | null }) => {
+    const optimisticId = `temp-${crypto.randomUUID()}`;
+    const now = new Date().toISOString();
+    const optimistic: Message = {
+      id: optimisticId,
+      senderId: currentUserId,
+      senderName: currentMember?.name ?? user?.fullName ?? "You",
+      senderEmail: user?.email ?? "",
+      text: payload.text,
+      status: "sent",
+      isEdited: false,
+      isDeleted: false,
+      replyToId: payload.replyToId ?? null,
+      replyToText: null,
+      replyToSenderName: null,
+      createdAt: now,
+      updatedAt: now,
+      attachments: payload.attachments
+    };
+    setMsgs((prev) => [...prev, optimistic]);
     try {
       const response = await api.post("/api/messages", payload);
       const saved = response.data.message as Message;
-      setMsgs((prev) => (prev.some((item) => item.id === saved.id) ? prev : [...prev, saved]));
+      setMsgs((prev) => {
+        const withoutOptimistic = prev.filter((item) => item.id !== optimisticId && item.id !== saved.id);
+        return [...withoutOptimistic, saved];
+      });
       setLoadError("");
     } catch (error: unknown) {
+      setMsgs((prev) => prev.filter((item) => item.id !== optimisticId));
       const message =
         typeof error === "object" && error && "response" in error
           ? String((error as { response?: { data?: { message?: string } } }).response?.data?.message ?? "Failed to send message.")
           : "Failed to send message.";
       setLoadError(message);
     }
-  }, []);
+  }, [currentMember?.name, currentUserId, user?.email, user?.fullName]);
 
   const handleDelete = useCallback(async (msgId: string) => {
     const snapshot = msgs;
@@ -146,6 +173,23 @@ export default function MessagesPage() {
       setMsgs(snapshot);
     }
   }, [currentUserId, msgs]);
+
+  const handleClearChat = useCallback(async () => {
+    setClearChatLoading(true);
+    try {
+      await api.delete("/api/messages/clear");
+      setMsgs([]);
+      setLoadError("");
+    } catch (error: unknown) {
+      const message =
+        typeof error === "object" && error && "response" in error
+          ? String((error as { response?: { data?: { message?: string } } }).response?.data?.message ?? "Failed to clear chat.")
+          : "Failed to clear chat.";
+      setLoadError(message);
+    } finally {
+      setClearChatLoading(false);
+    }
+  }, []);
 
   const handleBack = useCallback(() => {
     setShowMobileList(true);
@@ -208,6 +252,8 @@ export default function MessagesPage() {
                 typingUsers={typingUserNames}
                 onDelete={handleDelete}
                 onEdit={handleEdit}
+                onClearChat={isAdmin ? handleClearChat : undefined}
+                clearChatLoading={clearChatLoading}
                 onBack={handleBack}
               />
             )}

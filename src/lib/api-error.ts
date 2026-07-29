@@ -3,6 +3,7 @@ import { ZodError } from "zod";
 import { Prisma } from "@prisma/client";
 import { logger } from "@/lib/logger";
 import { DatabaseNotReadyError } from "@/lib/ensure-database";
+import { isTransientDbError } from "@/lib/db-retry";
 
 export class HttpError extends Error {
   constructor(
@@ -13,6 +14,14 @@ export class HttpError extends Error {
     super(message);
     this.name = "HttpError";
   }
+}
+
+function logDbError(context: string, error: unknown) {
+  const code =
+    error instanceof Prisma.PrismaClientKnownRequestError ? error.code : undefined;
+  const message = error instanceof Error ? error.message : String(error);
+  const stack = error instanceof Error ? error.stack : undefined;
+  logger.error(context, { code, message, stack });
 }
 
 export function handleApiError(error: unknown) {
@@ -49,22 +58,48 @@ export function handleApiError(error: unknown) {
       );
     }
     if (error.code === "P1001" || error.code === "P1000" || error.code === "P1017") {
-      logger.error("Database connection error", { code: error.code, message: error.message });
+      logDbError("Database connection error", error);
       return NextResponse.json(
-        { message: "Database connection failed. Verify DATABASE_URL in Netlify Runtime environment variables." },
+        { message: "Unable to reach the database. Please try again in a moment." },
         { status: 503 }
       );
     }
     if (error.code === "P2024") {
-      logger.error("Database connection pool timeout", { message: error.message });
+      logDbError("Database connection pool timeout", error);
       return NextResponse.json(
-        { message: "Database is busy. Please retry in a moment." },
+        {
+          message:
+            "The database is temporarily overloaded. Please wait a second and try again."
+        },
         { status: 503 }
       );
     }
     if (error.code === "P2003") {
+      logDbError("Foreign key constraint failed", error);
       return NextResponse.json({ message: "Related record not found (invalid reference)." }, { status: 400 });
     }
+    if (error.code === "P2011") {
+      const fields = Array.isArray(error.meta?.constraint)
+        ? (error.meta?.constraint as string[]).join(", ")
+        : "required field";
+      logDbError("Null constraint violation", error);
+      return NextResponse.json(
+        { message: `Missing required field: ${fields}. Please complete the form and try again.` },
+        { status: 400 }
+      );
+    }
+    if (error.code === "P2000") {
+      logDbError("Value too long for column", error);
+      return NextResponse.json(
+        { message: "One of the values is too long for the database field." },
+        { status: 400 }
+      );
+    }
+    logDbError("Prisma known request error", error);
+    return NextResponse.json(
+      { message: "A database error occurred while processing your request." },
+      { status: 500 }
+    );
   }
 
   if (error instanceof Error) {
@@ -94,13 +129,13 @@ export function handleApiError(error: unknown) {
     if (error.message.includes("SMTP")) {
       return NextResponse.json({ message: error.message }, { status: 503 });
     }
-    if (
-      error.message.includes("Timed out fetching a new connection") ||
-      error.message.includes("connection pool")
-    ) {
-      logger.error("Prisma connection pool exhausted", { message: error.message });
+    if (isTransientDbError(error)) {
+      logDbError("Transient database error after retries", error);
       return NextResponse.json(
-        { message: "Database is busy. Please retry in a moment." },
+        {
+          message:
+            "The database is temporarily overloaded. Please wait a second and try again."
+        },
         { status: 503 }
       );
     }

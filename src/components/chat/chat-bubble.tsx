@@ -110,6 +110,8 @@ export function ChatBubble({ message, sender, isOwn, canEdit, canDelete, showHea
               {message.attachments.filter((a) => a.type === "image").map((image) => (
                 <div key={image.id} className="mb-2 overflow-hidden rounded-[8px]">
                   <a href={image.url} target="_blank" rel="noreferrer">
+                    {/* Local chat uploads are served from /public; next/image is unnecessary here. */}
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
                     <img
                       src={image.url}
                       alt={image.name}

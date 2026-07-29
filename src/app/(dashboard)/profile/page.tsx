@@ -26,11 +26,21 @@ const profileSchema = z.object({
 
 const passwordSchema = z
   .object({
-    currentPassword: z.string().min(8),
-    newPassword: z.string().min(8),
-    confirmPassword: z.string().min(8)
+    currentPassword: z.string().min(8, "Current password is required"),
+    newPassword: z
+      .string()
+      .min(8, "New password must be at least 8 characters")
+      .max(128, "Password is too long"),
+    confirmPassword: z.string().min(8, "Confirm your new password")
   })
-  .refine((d) => d.newPassword === d.confirmPassword, { message: "Passwords do not match", path: ["confirmPassword"] });
+  .refine((d) => d.newPassword === d.confirmPassword, {
+    message: "Passwords do not match",
+    path: ["confirmPassword"]
+  })
+  .refine((d) => d.currentPassword !== d.newPassword, {
+    message: "New password must be different from current password",
+    path: ["newPassword"]
+  });
 
 export default function ProfilePage() {
   const queryClient = useQueryClient();
@@ -149,18 +159,24 @@ export default function ProfilePage() {
             <div className="grid gap-4 sm:grid-cols-3">
               <div className="space-y-1.5">
                 <Label>Current Password</Label>
-                <Input type="password" {...passwordForm.register("currentPassword")} />
+                <Input type="password" autoComplete="current-password" {...passwordForm.register("currentPassword")} />
+                {passwordForm.formState.errors.currentPassword ? (
+                  <p className="text-xs text-[#EF4444]">{passwordForm.formState.errors.currentPassword.message}</p>
+                ) : null}
               </div>
               <div className="space-y-1.5">
                 <Label>New Password</Label>
-                <Input type="password" {...passwordForm.register("newPassword")} />
+                <Input type="password" autoComplete="new-password" {...passwordForm.register("newPassword")} />
+                {passwordForm.formState.errors.newPassword ? (
+                  <p className="text-xs text-[#EF4444]">{passwordForm.formState.errors.newPassword.message}</p>
+                ) : null}
               </div>
               <div className="space-y-1.5">
                 <Label>Confirm Password</Label>
-                <Input type="password" {...passwordForm.register("confirmPassword")} />
-                {passwordForm.formState.errors.confirmPassword && (
+                <Input type="password" autoComplete="new-password" {...passwordForm.register("confirmPassword")} />
+                {passwordForm.formState.errors.confirmPassword ? (
                   <p className="text-xs text-[#EF4444]">{passwordForm.formState.errors.confirmPassword.message}</p>
-                )}
+                ) : null}
               </div>
             </div>
             <Button type="submit" loading={changePassword.isPending}>Change Password</Button>

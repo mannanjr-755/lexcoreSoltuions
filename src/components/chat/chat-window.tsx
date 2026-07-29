@@ -1,12 +1,12 @@
 "use client";
 
 import { useState, useRef, useEffect, useMemo, useCallback } from "react";
-import { Hash, Search, X } from "lucide-react";
+import { Hash, Search, X, Trash2 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import type { Message, TeamMember, Workspace } from "./chat-types";
 import { ChatBubble } from "./chat-bubble";
 import { ChatInput } from "./chat-input";
-import { cn } from "@/lib/utils";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import type { Attachment } from "./chat-types";
 
 interface ChatWindowProps {
@@ -19,6 +19,8 @@ interface ChatWindowProps {
   typingUsers?: string[];
   onDelete: (id: string) => void;
   onEdit: (id: string, text: string) => void;
+  onClearChat?: () => Promise<void> | void;
+  clearChatLoading?: boolean;
   onBack?: () => void;
 }
 
@@ -46,10 +48,24 @@ function groupByDate(msgs: Message[]) {
   return groups;
 }
 
-export function ChatWindow({ workspace, messages, currentUserId, isAdmin, onSend, onTypingChange, typingUsers = [], onDelete, onEdit, onBack }: ChatWindowProps) {
+export function ChatWindow({
+  workspace,
+  messages,
+  currentUserId,
+  isAdmin,
+  onSend,
+  onTypingChange,
+  typingUsers = [],
+  onDelete,
+  onEdit,
+  onClearChat,
+  clearChatLoading = false,
+  onBack
+}: ChatWindowProps) {
   const [replyTo, setReplyTo] = useState<Message | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [showSearch, setShowSearch] = useState(false);
+  const [confirmClear, setConfirmClear] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
 
   const memberMap = useMemo(() => {
@@ -129,9 +145,21 @@ export function ChatWindow({ workspace, messages, currentUserId, isAdmin, onSend
             type="button"
             onClick={() => setShowSearch((v) => !v)}
             className="flex h-8 w-8 items-center justify-center rounded-[8px] text-[#64748B] transition hover:bg-[#F1F5F9] hover:text-[#0F172A]"
+            title="Search messages"
           >
             <Search className="size-4" />
           </button>
+          {isAdmin && onClearChat ? (
+            <button
+              type="button"
+              onClick={() => setConfirmClear(true)}
+              className="flex h-8 items-center gap-1.5 rounded-[8px] px-2.5 text-xs font-medium text-[#EF4444] transition hover:bg-[#FEF2F2]"
+              title="Clear chat history"
+            >
+              <Trash2 className="size-3.5" />
+              <span className="hidden sm:inline">Clear Chat</span>
+            </button>
+          ) : null}
         </div>
       </div>
 
@@ -222,6 +250,19 @@ export function ChatWindow({ workspace, messages, currentUserId, isAdmin, onSend
         onTypingChange={onTypingChange}
         replyTo={replyTo ? { text: replyTo.text, senderName: memberMap[replyTo.senderId]?.name ?? "Unknown" } : null}
         onCancelReply={() => setReplyTo(null)}
+      />
+
+      <ConfirmDialog
+        open={confirmClear}
+        title="Clear entire chat?"
+        description="This permanently deletes every message, image, and file in Lexcore Solutions for all users. This cannot be undone."
+        confirmLabel="Clear Chat"
+        loading={clearChatLoading}
+        onCancel={() => setConfirmClear(false)}
+        onConfirm={async () => {
+          await onClearChat?.();
+          setConfirmClear(false);
+        }}
       />
     </div>
   );

@@ -7,7 +7,7 @@ const handlers = createCrudHandlers({
   delegate: prisma.project,
   schema: projectSchema,
   searchFields: ["name"],
-  include: { customer: { select: { id: true, name: true, company: true } } },
+  include: { customer: { select: { id: true, name: true, phone: true } } },
   mapRow: (row) => ({
     ...row,
     customerId: row.customer

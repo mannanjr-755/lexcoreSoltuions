@@ -10,7 +10,11 @@ import { isAxiosError } from "axios";
 import api from "@/lib/axios";
 import { exportToCsv, exportToExcel } from "@/lib/export";
 import { formatCurrency } from "@/lib/utils";
-import { customerCreateSchema, type CustomerCreateInput } from "@/validators/customer.schema";
+import {
+  customerCreateSchema,
+  formatCustomerPhone,
+  type CustomerCreateInput
+} from "@/validators/customer.schema";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -23,6 +27,7 @@ import { useAuth } from "@/components/providers/auth-provider";
 
 type Customer = {
   _id: string;
+  id?: string;
   customerId: string;
   name: string;
   phone: string;
@@ -45,6 +50,32 @@ const statusColors: Record<string, string> = {
   completed: "bg-[#F0FDF4] text-[#22C55E]",
   cancelled: "bg-[#FEF2F2] text-[#EF4444]"
 };
+
+const emptyForm: CustomerCreateInput = {
+  name: "",
+  phone: "",
+  whatsapp: "",
+  address: "",
+  projectName: "",
+  projectType: "Web Application",
+  totalCost: 0,
+  advancePaid: 0,
+  paidAmount: 0,
+  projectDeadline: new Date().toISOString().slice(0, 10),
+  priority: "medium",
+  status: "lead",
+  notes: "",
+  technology: []
+};
+
+async function refreshCustomerQueries(queryClient: ReturnType<typeof useQueryClient>) {
+  await Promise.all([
+    queryClient.invalidateQueries({ queryKey: ["customers"] }),
+    queryClient.invalidateQueries({ queryKey: ["dashboard-stats"] }),
+    queryClient.refetchQueries({ queryKey: ["customers"], type: "active" }),
+    queryClient.refetchQueries({ queryKey: ["dashboard-stats"], type: "active" })
+  ]);
+}
 
 export default function CustomersPage() {
   const { user } = useAuth();
@@ -84,37 +115,12 @@ export default function CustomersPage() {
 
   const form = useForm<CustomerCreateInput>({
     resolver: zodResolver(customerCreateSchema),
-    defaultValues: {
-      name: "",
-      phone: "",
-      projectName: "",
-      projectType: "Web Application",
-      totalCost: 0,
-      advancePaid: 0,
-      paidAmount: 0,
-      projectDeadline: new Date().toISOString().slice(0, 10),
-      priority: "medium",
-      status: "lead",
-      technology: []
-    }
+    defaultValues: emptyForm
   });
 
   const openCreate = () => {
     setEditing(null);
-    form.reset({
-      name: "",
-      phone: "",
-      projectName: "",
-      projectType: "Web Application",
-      totalCost: 0,
-      advancePaid: 0,
-      paidAmount: 0,
-      projectDeadline: new Date().toISOString().slice(0, 10),
-      priority: "medium",
-      status: "lead",
-      notes: "",
-      technology: []
-    });
+    form.reset({ ...emptyForm, projectDeadline: new Date().toISOString().slice(0, 10) });
     setModalOpen(true);
   };
 
@@ -139,71 +145,118 @@ export default function CustomersPage() {
 
   const saveMutation = useMutation({
     mutationFn: async (values: CustomerCreateInput) => {
+      const toAmount = (value: unknown) => {
+        const n = typeof value === "number" ? value : Number(value);
+        return Number.isFinite(n) && n >= 0 ? n : 0;
+      };
       const payload = {
         ...values,
-        totalCost: Number(values.totalCost),
-        advancePaid: Number(values.advancePaid ?? 0),
-        paidAmount: Number(values.paidAmount ?? 0),
-        assignedManager: user?.id
+        name: values.name.trim(),
+        phone: values.phone.trim(),
+        projectName: values.projectName.trim(),
+        projectType: values.projectType.trim(),
+        totalCost: toAmount(values.totalCost),
+        advancePaid: toAmount(values.advancePaid ?? 0),
+        paidAmount: toAmount(values.paidAmount ?? 0),
+        ...(user?.id ? { assignedManager: user.id } : {})
       };
       if (editing) {
-        return api.patch(`/api/crm/customers/${editing._id}`, payload);
+        const response = await api.patch(`/api/crm/customers/${editing._id}`, payload);
+        return { mode: "update" as const, customer: (response.data.customer ?? response.data) as Customer };
       }
-      return api.post("/api/crm/customers", payload);
+      const response = await api.post("/api/crm/customers", payload);
+      return { mode: "create" as const, customer: response.data as Customer };
     },
-    onSuccess: async () => {
-      toast.success(editing ? "Customer updated" : "Customer created successfully");
+    onSuccess: async (result) => {
+      toast.success(result.mode === "update" ? "Customer updated" : "Customer created successfully");
       setModalOpen(false);
       setEditing(null);
       submitLockRef.current = false;
-      form.reset();
+      form.reset({ ...emptyForm, projectDeadline: new Date().toISOString().slice(0, 10) });
       setPage(1);
-      await Promise.all([
-        queryClient.invalidateQueries({ queryKey: ["customers"] }),
-        queryClient.invalidateQueries({ queryKey: ["dashboard-stats"] }),
-        queryClient.refetchQueries({ queryKey: ["customers"], type: "active" }),
-        queryClient.refetchQueries({ queryKey: ["dashboard-stats"], type: "active" })
-      ]);
+
+      // Instant UI update, then reconcile with server.
+      queryClient.setQueriesData({ queryKey: ["customers"] }, (current: unknown) => {
+        if (!current || typeof current !== "object") return current;
+        const pageData = current as { data?: Customer[]; total?: number };
+        const list = Array.isArray(pageData.data) ? [...pageData.data] : [];
+        const saved = {
+          ...result.customer,
+          _id: result.customer._id || result.customer.id || ""
+        };
+        if (result.mode === "create") {
+          return {
+            ...pageData,
+            data: [saved, ...list.filter((item) => item._id !== saved._id)],
+            total: (pageData.total ?? list.length) + 1
+          };
+        }
+        return {
+          ...pageData,
+          data: list.map((item) => (item._id === saved._id ? { ...item, ...saved } : item))
+        };
+      });
+
+      await refreshCustomerQueries(queryClient);
     },
     onError: (err) => {
       submitLockRef.current = false;
-      const message = isAxiosError(err)
-        ? err.response?.data?.message ?? "Save failed"
-        : "Save failed";
+      const message = isAxiosError(err) ? err.response?.data?.message ?? "Save failed" : "Save failed";
       toast.error(message);
     }
   });
 
   const deleteMutation = useMutation({
     mutationFn: async (id: string) => api.delete(`/api/crm/customers/${id}`),
+    onMutate: async (id) => {
+      await queryClient.cancelQueries({ queryKey: ["customers"] });
+      queryClient.setQueriesData({ queryKey: ["customers"] }, (current: unknown) => {
+        if (!current || typeof current !== "object") return current;
+        const pageData = current as { data?: Customer[]; total?: number };
+        const list = Array.isArray(pageData.data) ? pageData.data : [];
+        return {
+          ...pageData,
+          data: list.filter((item) => item._id !== id),
+          total: Math.max(0, (pageData.total ?? list.length) - 1)
+        };
+      });
+    },
     onSuccess: async () => {
       toast.success("Record deleted successfully.");
       setDeleteId(null);
-      await Promise.all([
-        queryClient.invalidateQueries({ queryKey: ["customers"] }),
-        queryClient.invalidateQueries({ queryKey: ["dashboard-stats"] }),
-        queryClient.refetchQueries({ queryKey: ["customers"], type: "active" }),
-        queryClient.refetchQueries({ queryKey: ["dashboard-stats"], type: "active" })
-      ]);
+      await refreshCustomerQueries(queryClient);
     },
-    onError: (err) =>
-      toast.error(isAxiosError(err) ? err.response?.data?.message ?? "Delete failed" : "Delete failed")
+    onError: async (err) => {
+      toast.error(isAxiosError(err) ? err.response?.data?.message ?? "Delete failed" : "Delete failed");
+      await refreshCustomerQueries(queryClient);
+    }
   });
 
   const bulkDeleteMutation = useMutation({
     mutationFn: async (ids: string[]) => api.delete("/api/crm/customers", { data: { ids } }),
+    onMutate: async (ids) => {
+      const idSet = new Set(ids);
+      queryClient.setQueriesData({ queryKey: ["customers"] }, (current: unknown) => {
+        if (!current || typeof current !== "object") return current;
+        const pageData = current as { data?: Customer[]; total?: number };
+        const list = Array.isArray(pageData.data) ? pageData.data : [];
+        const next = list.filter((item) => !idSet.has(item._id));
+        return {
+          ...pageData,
+          data: next,
+          total: Math.max(0, (pageData.total ?? list.length) - (list.length - next.length))
+        };
+      });
+    },
     onSuccess: async () => {
       toast.success("Record deleted successfully.");
       setSelected([]);
-      await Promise.all([
-        queryClient.invalidateQueries({ queryKey: ["customers"] }),
-        queryClient.invalidateQueries({ queryKey: ["dashboard-stats"] }),
-        queryClient.refetchQueries({ queryKey: ["customers"], type: "active" }),
-        queryClient.refetchQueries({ queryKey: ["dashboard-stats"], type: "active" })
-      ]);
+      await refreshCustomerQueries(queryClient);
     },
-    onError: (err) =>
-      toast.error(isAxiosError(err) ? err.response?.data?.message ?? "Bulk delete failed" : "Bulk delete failed")
+    onError: async (err) => {
+      toast.error(isAxiosError(err) ? err.response?.data?.message ?? "Bulk delete failed" : "Bulk delete failed");
+      await refreshCustomerQueries(queryClient);
+    }
   });
 
   const exportRows = useMemo(
@@ -211,7 +264,7 @@ export default function CustomersPage() {
       customers.map((c) => ({
         ID: c.customerId,
         Name: c.name,
-        Phone: c.phone,
+        Phone: formatCustomerPhone(c.phone),
         Project: c.projectName,
         Status: c.status,
         Total: c.totalCost,
@@ -236,8 +289,8 @@ export default function CustomersPage() {
         <div>
           <h1 className="text-xl font-semibold text-[#0F172A]">CRM Customers</h1>
           <p className="text-sm text-[#64748B]">
-            {total} customers &middot; Revenue {formatCurrency(data?.financials?.totalRevenue ?? 0)} &middot; Pending{" "}
-            {formatCurrency(data?.financials?.totalPending ?? 0)}
+            {total} customers &middot; Revenue {formatCurrency(data?.financials?.totalCost ?? 0)} &middot; Pending{" "}
+            {formatCurrency(data?.financials?.remainingAmount ?? 0)}
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
@@ -259,7 +312,7 @@ export default function CustomersPage() {
             <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-[#64748B]" />
             <Input
               className="pl-9"
-              placeholder="Search customers..."
+              placeholder="Search by name or phone..."
               value={searchInput}
               onChange={(e) => setSearchInput(e.target.value)}
             />
@@ -324,11 +377,12 @@ export default function CustomersPage() {
                       </td>
                       <td className="px-4 py-3">
                         <div className="flex items-center gap-3">
-                          <div className="flex h-8 w-8 items-center justify-center rounded-[8px] bg-[#EFF6FF] text-xs font-bold text-[#2563EB]">
-                            {item.name.charAt(0)}
+                          <div className="flex h-9 w-9 items-center justify-center rounded-[10px] bg-[#EFF6FF] text-xs font-bold text-[#2563EB]">
+                            {item.name.charAt(0).toUpperCase()}
                           </div>
-                          <div>
-                            <p className="font-medium text-[#0F172A]">{item.name}</p>
+                          <div className="min-w-0">
+                            <p className="truncate font-medium text-[#0F172A]">{item.name}</p>
+                            <p className="truncate text-xs text-[#64748B]">{formatCustomerPhone(item.phone)}</p>
                           </div>
                         </div>
                       </td>
@@ -398,7 +452,7 @@ export default function CustomersPage() {
                 </div>
                 <div className="space-y-1.5">
                   <Label>Phone *</Label>
-                  <Input {...form.register("phone")} />
+                  <Input placeholder="03001234567" {...form.register("phone")} />
                   {form.formState.errors.phone ? <p className="text-xs text-[#EF4444]">{form.formState.errors.phone.message}</p> : null}
                 </div>
                 <div className="space-y-1.5">
@@ -414,15 +468,18 @@ export default function CustomersPage() {
                 </div>
                 <div className="space-y-1.5">
                   <Label>Total Cost</Label>
-                  <Input type="number" step="0.01" {...form.register("totalCost", { valueAsNumber: true })} />
+                  <Input type="number" min="0" step="0.01" {...form.register("totalCost", { valueAsNumber: true })} />
+                  {form.formState.errors.totalCost ? (
+                    <p className="text-xs text-[#EF4444]">{form.formState.errors.totalCost.message}</p>
+                  ) : null}
                 </div>
                 <div className="space-y-1.5">
                   <Label>Advance Paid</Label>
-                  <Input type="number" step="0.01" {...form.register("advancePaid", { valueAsNumber: true })} />
+                  <Input type="number" min="0" step="0.01" {...form.register("advancePaid", { valueAsNumber: true })} />
                 </div>
                 <div className="space-y-1.5">
                   <Label>Additional Paid</Label>
-                  <Input type="number" step="0.01" {...form.register("paidAmount", { valueAsNumber: true })} />
+                  <Input type="number" min="0" step="0.01" {...form.register("paidAmount", { valueAsNumber: true })} />
                 </div>
                 <div className="space-y-1.5">
                   <Label>Deadline *</Label>

@@ -32,6 +32,8 @@ yarn-debug.log*
 yarn-error.log*
 *.log
 *.tsbuildinfo
+cookies.txt
+headers.txt
 
 # ide / os
 .DS_Store
@@ -39,3 +41,6 @@ yarn-error.log*
 .vscode
 
 /generated/prisma
+
+# Local chat uploads
+public/uploads/

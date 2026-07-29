@@ -5,6 +5,10 @@ import { prisma } from "@/lib/prisma";
 import { handleApiError, unauthorized } from "@/lib/api-error";
 import { getSession } from "@/lib/auth";
 import { getClientInfo, logActivity } from "@/lib/activity";
+import { logger } from "@/lib/logger";
+
+export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
 
 export async function GET(req: Request) {
   try {
@@ -30,7 +34,13 @@ export async function POST(req: Request) {
     const session = await getSession();
     if (!session) return unauthorized();
 
-    const body = await req.json();
+    let body: unknown;
+    try {
+      body = await req.json();
+    } catch {
+      return NextResponse.json({ message: "Invalid request body" }, { status: 400 });
+    }
+
     const parsed = customerCreateSchema.safeParse(body);
     if (!parsed.success) {
       const first = parsed.error.issues[0];
@@ -43,35 +53,69 @@ export async function POST(req: Request) {
       );
     }
 
-    const assignedManager = parsed.data.assignedManager || session.id;
+    const assignedManager =
+      parsed.data.assignedManager && parsed.data.assignedManager.trim().length > 0
+        ? parsed.data.assignedManager.trim()
+        : session.id;
+
+    const managerExists = await prisma.user.findUnique({
+      where: { id: assignedManager },
+      select: { id: true }
+    });
+    if (!managerExists) {
+      return NextResponse.json(
+        { message: "Assigned manager is invalid. Please sign in again and retry." },
+        { status: 400 }
+      );
+    }
+
     const created = await customerRepository.create({ ...parsed.data, assignedManager });
-    if (!created) return NextResponse.json({ message: "Unable to create customer" }, { status: 500 });
+    if (!created) {
+      return NextResponse.json({ message: "Unable to create customer. Please try again." }, { status: 500 });
+    }
+
     const paymentPercentage =
       created.totalCost > 0 ? Math.round((created.paidAmount / created.totalCost) * 100) : 0;
 
     const { ipAddress, userAgent, browser } = getClientInfo(req);
-    await logActivity({
-      userId: session.id,
-      userName: session.fullName,
-      action: "customer_added",
-      entity: "customer",
-      entityId: created.id,
-      description: `Customer ${created.name} (${created.customerId}) added`,
-      ipAddress,
-      userAgent,
-      browser,
-      metadata: { paymentPercentage }
-    });
 
-    await prisma.notification.create({
-      data: {
+    // Side-effects should not fail the successful create response.
+    try {
+      await logActivity({
         userId: session.id,
-        title: "New Customer Added",
-        message: `${created.name} has been added as a new customer`,
-        type: "customer",
-        link: "/crm/customers"
-      }
-    });
+        userName: session.fullName,
+        action: "customer_added",
+        entity: "customer",
+        entityId: created.id,
+        description: `Customer ${created.name} (${created.customerId}) added`,
+        ipAddress,
+        userAgent,
+        browser,
+        metadata: { paymentPercentage }
+      });
+    } catch (error) {
+      logger.error("Failed to write customer activity log", {
+        customerId: created.customerId,
+        message: error instanceof Error ? error.message : String(error)
+      });
+    }
+
+    try {
+      await prisma.notification.create({
+        data: {
+          userId: session.id,
+          title: "New Customer Added",
+          message: `${created.name} has been added as a new customer`,
+          type: "customer",
+          link: "/crm/customers"
+        }
+      });
+    } catch (error) {
+      logger.error("Failed to create customer notification", {
+        customerId: created.customerId,
+        message: error instanceof Error ? error.message : String(error)
+      });
+    }
 
     return NextResponse.json({ ...created, paymentPercentage }, { status: 201 });
   } catch (error) {

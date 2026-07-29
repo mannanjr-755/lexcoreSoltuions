@@ -6,12 +6,13 @@ import { setAuthCookies } from "@/lib/cookies";
 import { handleApiError } from "@/lib/api-error";
 import { getClientInfo, logActivity } from "@/lib/activity";
 import { rateLimit } from "@/lib/rate-limit";
-import { comparePassword } from "@/lib/bcrypt";
+import { verifyPassword } from "@/lib/bcrypt";
 import { ensureSuperAdmin } from "@/lib/ensure-admin";
-import { LOGIN_LOCK_DURATION_MS, LOGIN_LOCK_THRESHOLD, isAuthorizedEmail } from "@/types/auth";
+import { LOGIN_LOCK_DURATION_MS, LOGIN_LOCK_THRESHOLD } from "@/types/auth";
 import { logger } from "@/lib/logger";
 import { assertAuthEnv, getRawDatabaseUrl, assertValidDatabaseUrl } from "@/lib/database-url";
-import { ensureAuthorizedUsers } from "@/lib/ensure-authorized-users";
+import { ensureAuthorizedUsers, repairAuthorizedPasswordHash } from "@/lib/ensure-authorized-users";
+import { isAuthorizedEmail, normalizeEmail } from "@/lib/authorized-users";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -24,7 +25,8 @@ const loginSchema = z.object({
     .email("Enter a valid email address"),
   password: z
     .string({ error: "Password is required" })
-    .min(8, "Password must be at least 8 characters"),
+    .min(8, "Password must be at least 8 characters")
+    .max(128, "Password is too long"),
   rememberMe: z
     .union([z.boolean(), z.literal("true"), z.literal("false"), z.literal("on"), z.null()])
     .optional()
@@ -64,61 +66,67 @@ export async function POST(req: Request) {
     await ensureSuperAdmin();
     await ensureAuthorizedUsers();
 
-    const email = parsed.data.email.toLowerCase();
-    const user = await prisma.user.findUnique({ where: { email } });
+    const email = normalizeEmail(parsed.data.email);
+    const password = parsed.data.password;
 
-    if (!user) {
-      return NextResponse.json({ message: "Account not found. Check your email address." }, { status: 401 });
-    }
-
-    if (!isAuthorizedEmail(user.email)) {
-      await prisma.loginHistory.create({
-        data: {
-        userId: user.id,
-        ipAddress,
-        userAgent,
-        browser,
-        success: false,
-        failureReason: "Email not in authorized list"
-        }
-      });
+    if (!isAuthorizedEmail(email)) {
+      logger.warn("Login blocked for unauthorized email", { email, ipAddress });
       return NextResponse.json(
         { message: "Access Denied. You are not authorized to access this dashboard." },
         { status: 403 }
       );
     }
 
+    const user = await prisma.user.findUnique({ where: { email } });
+
+    if (!user) {
+      logger.warn("Login failed: user not found", { email, ipAddress });
+      return NextResponse.json({ message: "User not found." }, { status: 401 });
+    }
+
     if (!user.isActive) {
+      logger.warn("Login failed: inactive account", { email, ipAddress });
       return NextResponse.json({ message: "Account is inactive. Contact support." }, { status: 403 });
     }
 
     if (user.lockedUntil && user.lockedUntil > new Date()) {
       const minutesLeft = Math.ceil((user.lockedUntil.getTime() - Date.now()) / 60000);
+      logger.warn("Login failed: account locked", { email, ipAddress, minutesLeft });
       return NextResponse.json(
         { message: `Account locked. Try again in ${minutesLeft} minute(s).` },
         { status: 423 }
       );
     }
 
-    const isValid = await comparePassword(parsed.data.password, user.passwordHash);
+    let isValid = await verifyPassword(password, user.passwordHash);
+
+    // Heal seed/env drift: correct configured password typed, but DB hash outdated/corrupt.
+    if (!isValid) {
+      const repaired = await repairAuthorizedPasswordHash(email, password);
+      if (repaired) {
+        isValid = true;
+      }
+    }
+
     if (!isValid) {
       const attempts = (user.failedLoginAttempts ?? 0) + 1;
+      const locked = attempts >= LOGIN_LOCK_THRESHOLD;
       await prisma.user.update({
         where: { id: user.id },
         data: {
-          failedLoginAttempts: attempts >= LOGIN_LOCK_THRESHOLD ? 0 : attempts,
-          lockedUntil: attempts >= LOGIN_LOCK_THRESHOLD ? new Date(Date.now() + LOGIN_LOCK_DURATION_MS) : null
+          failedLoginAttempts: locked ? 0 : attempts,
+          lockedUntil: locked ? new Date(Date.now() + LOGIN_LOCK_DURATION_MS) : null
         }
       });
 
       await prisma.loginHistory.create({
         data: {
-        userId: user.id,
-        ipAddress,
-        userAgent,
-        browser,
-        success: false,
-        failureReason: "Invalid password"
+          userId: user.id,
+          ipAddress,
+          userAgent,
+          browser,
+          success: false,
+          failureReason: "Incorrect password"
         }
       });
 
@@ -132,6 +140,13 @@ export async function POST(req: Request) {
         browser
       });
 
+      logger.warn("Login failed: incorrect password", {
+        email: user.email,
+        ipAddress,
+        attempts,
+        locked
+      });
+
       return NextResponse.json({ message: "Incorrect password." }, { status: 401 });
     }
 
@@ -143,11 +158,11 @@ export async function POST(req: Request) {
 
     await prisma.loginHistory.create({
       data: {
-      userId: user.id,
-      ipAddress,
-      userAgent,
-      browser,
-      success: true
+        userId: user.id,
+        ipAddress,
+        userAgent,
+        browser,
+        success: true
       }
     });
 
@@ -155,7 +170,7 @@ export async function POST(req: Request) {
       userId: user.id,
       userName: user.fullName,
       action: "login",
-      description: "Admin logged in",
+      description: "User logged in",
       ipAddress,
       userAgent,
       browser
@@ -187,7 +202,7 @@ export async function POST(req: Request) {
 
     setAuthCookies(response, { accessToken, refreshToken }, rememberMe);
     response.headers.set("Cache-Control", "no-store");
-    logger.info("Admin login successful", { email: user.email });
+    logger.info("Login successful", { email: user.email });
     return response;
   } catch (error) {
     return handleApiError(error);

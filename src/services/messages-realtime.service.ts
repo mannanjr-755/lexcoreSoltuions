@@ -5,6 +5,7 @@ type MessageRealtimeEvent =
   | { type: "message.created"; message: Message }
   | { type: "message.updated"; messageId: string; text: string; updatedAt: string }
   | { type: "message.deleted"; messageId: string }
+  | { type: "messages.cleared"; workspaceId: string; at: string }
   | { type: "typing"; email: string; isTyping: boolean; at: string };
 
 type Subscriber = (event: MessageRealtimeEvent) => void;
@@ -36,6 +37,14 @@ export function publishMessageUpdated(messageId: string, text: string, updatedAt
 
 export function publishMessageDeleted(messageId: string) {
   broadcast({ type: "message.deleted", messageId });
+}
+
+export function publishMessagesCleared(workspaceId = "lexcore-solutions") {
+  broadcast({
+    type: "messages.cleared",
+    workspaceId,
+    at: new Date().toISOString()
+  });
 }
 
 export function publishTyping(email: string, isTyping: boolean) {

@@ -80,10 +80,14 @@ function applyRuntimePoolParams(parsedUrl, connectTimeoutSec = 30) {
     process.env.AWS_LAMBDA_FUNCTION_NAME ||
     process.env.VERCEL === "1";
   if (!parsedUrl.searchParams.has("connection_limit")) {
-    parsedUrl.searchParams.set("connection_limit", isServerless ? "1" : "5");
+    // Local Next.js shares one Prisma client across concurrent routes — use a larger pool.
+    parsedUrl.searchParams.set("connection_limit", isServerless ? "1" : "10");
   }
   if (!parsedUrl.searchParams.has("pool_timeout")) {
-    parsedUrl.searchParams.set("pool_timeout", isServerless ? "30" : "20");
+    parsedUrl.searchParams.set("pool_timeout", isServerless ? "60" : "30");
+  }
+  if (!parsedUrl.searchParams.has("statement_cache_size")) {
+    parsedUrl.searchParams.set("statement_cache_size", "0");
   }
   if (parsedUrl.hostname.includes("-pooler.") && !parsedUrl.searchParams.has("pgbouncer")) {
     parsedUrl.searchParams.set("pgbouncer", "true");

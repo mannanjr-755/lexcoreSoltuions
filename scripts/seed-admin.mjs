@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 /**
  * Plain Node seed (no tsx) — safe for Netlify build and local db:setup.
+ * Uses the same per-user passwords as the runtime auth layer.
  */
 import "./load-env.mjs";
 import { PrismaClient } from "@prisma/client";
@@ -35,28 +36,54 @@ const staff = [
   { employeeId: "EMP-004", fullName: "Anjasha", email: "anjasha@lexcore.com", department: "HR", position: "HR Executive", salary: 95000 }
 ];
 
-async function main() {
-  const email = (process.env.SUPER_ADMIN_EMAIL ?? "admin@lexcore.com").toLowerCase();
-  const password = process.env.SUPER_ADMIN_PASSWORD ?? "Lexcore@2026!";
-  const passwordHash = await bcrypt.hash(password, 12);
+/** Must stay in sync with src/lib/authorized-users.ts */
+const authorizedUsers = [
+  { email: "admin@lexcore.com", name: "Admin", roleTitle: "Administrator", passwordEnvKey: "AUTH_PASSWORD_ADMIN", defaultPassword: "Admin@Lexcore1!" },
+  { email: "abdul@lexcore.com", name: "Abdul", roleTitle: "Software Engineer", passwordEnvKey: "AUTH_PASSWORD_ABDUL", defaultPassword: "Abdul@Lexcore1!" },
+  { email: "raid@lexcore.com", name: "Raid", roleTitle: "Frontend Developer", passwordEnvKey: "AUTH_PASSWORD_RAID", defaultPassword: "Raid@Lexcore1!" },
+  { email: "yousuf@lexcore.com", name: "Yousuf", roleTitle: "Project Coordinator", passwordEnvKey: "AUTH_PASSWORD_YOUSUF", defaultPassword: "Yousuf@Lexcore1!" },
+  { email: "anjasha@lexcore.com", name: "Anjasha", roleTitle: "HR Executive", passwordEnvKey: "AUTH_PASSWORD_ANJASHA", defaultPassword: "Anjasha@Lexcore1!" }
+];
 
-  await prisma.user.upsert({
-    where: { email },
-    update: {
-      role: "super_admin",
-      isActive: true,
-      passwordHash,
-      fullName: process.env.SUPER_ADMIN_NAME ?? "Admin"
-    },
-    create: {
-      fullName: process.env.SUPER_ADMIN_NAME ?? "Admin",
-      email,
-      passwordHash,
-      role: "super_admin",
-      company: "Lexcore Solutions",
-      designation: "Administrator"
-    }
-  });
+function resolvePassword(passwordEnvKey, defaultPassword) {
+  const fromEnv = process.env[passwordEnvKey]?.trim();
+  if (fromEnv && fromEnv.length >= 8) return fromEnv;
+  if (passwordEnvKey === "AUTH_PASSWORD_ADMIN") {
+    const superAdmin = process.env.SUPER_ADMIN_PASSWORD?.trim();
+    const legacy = new Set(["Lexcore@2026!", "Lexcore@2026", "admin123", "Admin123!"]);
+    if (superAdmin && superAdmin.length >= 8 && !legacy.has(superAdmin)) return superAdmin;
+  }
+  return defaultPassword;
+}
+
+async function main() {
+  for (const member of authorizedUsers) {
+    const password = resolvePassword(member.passwordEnvKey, member.defaultPassword);
+    const passwordHash = await bcrypt.hash(password, 12);
+    await prisma.user.upsert({
+      where: { email: member.email },
+      update: {
+        role: "super_admin",
+        isActive: true,
+        passwordHash,
+        fullName: member.name,
+        company: "Lexcore Solutions",
+        designation: member.roleTitle,
+        failedLoginAttempts: 0,
+        lockedUntil: null
+      },
+      create: {
+        fullName: member.name,
+        email: member.email,
+        passwordHash,
+        role: "super_admin",
+        company: "Lexcore Solutions",
+        designation: member.roleTitle,
+        isActive: true,
+        failedLoginAttempts: 0
+      }
+    });
+  }
 
   for (const department of departments) {
     await prisma.department.upsert({
@@ -105,7 +132,7 @@ async function main() {
     });
   }
 
-  console.log("[lexcore] Seed complete: admin, departments, staff, settings");
+  console.log("[lexcore] Seed complete: 5 authorized users, departments, staff, settings");
 }
 
 main()

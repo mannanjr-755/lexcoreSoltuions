@@ -27,7 +27,7 @@ const createMessageSchema = z.object({
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-export async function GET(_req: Request) {
+export async function GET() {
   try {
     const session = await getSession();
     if (!session || !isAuthorizedEmail(session.email)) return unauthorized();
@@ -52,6 +52,7 @@ export async function POST(req: Request) {
     const body = createMessageSchema.parse(await req.json());
     const message = await createMessage({
       senderEmail: session.email,
+      senderUserId: session.id,
       text: body.text,
       replyToId: body.replyToId,
       attachments: body.attachments

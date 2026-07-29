@@ -23,7 +23,7 @@ function isMissingUsersTable(error: unknown) {
 
 function isConnectionError(error: unknown) {
   if (error instanceof Prisma.PrismaClientKnownRequestError) {
-    return error.code === "P1001" || error.code === "P1000" || error.code === "P1017";
+    return error.code === "P1001" || error.code === "P1000" || error.code === "P1017" || error.code === "P2024";
   }
   const message = error instanceof Error ? error.message : String(error);
   return (
@@ -59,6 +59,7 @@ export async function ensureDatabaseSchema(): Promise<void> {
           );
         }
       } catch (error) {
+        schemaReady = null;
         if (error instanceof DatabaseNotReadyError) throw error;
         if (isConnectionError(error)) {
           throw new DatabaseNotReadyError(

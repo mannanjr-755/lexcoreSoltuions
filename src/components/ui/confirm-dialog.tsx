@@ -8,7 +8,7 @@ interface ConfirmDialogProps {
   description: string;
   confirmLabel?: string;
   loading?: boolean;
-  onConfirm: () => void;
+  onConfirm: () => unknown;
   onCancel: () => void;
 }
 
@@ -32,7 +32,14 @@ export function ConfirmDialog({
           <Button type="button" variant="secondary" onClick={onCancel} disabled={loading}>
             Cancel
           </Button>
-          <Button type="button" variant="danger" onClick={onConfirm} loading={loading}>
+          <Button
+            type="button"
+            variant="danger"
+            onClick={() => {
+              void onConfirm();
+            }}
+            loading={loading}
+          >
             {confirmLabel}
           </Button>
         </div>

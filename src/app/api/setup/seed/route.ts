@@ -20,7 +20,7 @@ export async function POST() {
     await ensureDatabaseSchema();
 
     const admin = await ensureSuperAdmin();
-    await ensureAuthorizedUsers();
+    await ensureAuthorizedUsers({ syncPasswords: true });
     await ensureStaffEmployees();
     await getSystemSettings();
 
@@ -40,7 +40,15 @@ export async function POST() {
     return NextResponse.json({
       message: "PostgreSQL seed data is ready",
       email: admin.email,
-      loginHint: "Sign in with SUPER_ADMIN_EMAIL / SUPER_ADMIN_PASSWORD from Netlify env (default admin@lexcore.com)"
+      authorizedUsers: [
+        "admin@lexcore.com",
+        "abdul@lexcore.com",
+        "raid@lexcore.com",
+        "yousuf@lexcore.com",
+        "anjasha@lexcore.com"
+      ],
+      loginHint:
+        "Each authorized user has a separate password (AUTH_PASSWORD_* env vars or unique defaults). Change passwords from Profile after first login."
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);

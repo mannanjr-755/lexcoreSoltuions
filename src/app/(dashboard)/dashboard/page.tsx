@@ -100,7 +100,7 @@ interface DashboardData {
   latestCustomers: Array<{
     _id: string;
     name: string;
-    company?: string;
+    phone?: string;
     status: string;
     createdAt: string;
     totalCost: number;
@@ -596,7 +596,7 @@ export default function DashboardPage() {
                   </div>
                   <div>
                     <p className="text-sm font-medium text-[#0F172A]">{c.name}</p>
-                    <p className="text-xs text-[#64748B]">Customer</p>
+                    <p className="text-xs text-[#64748B]">{c.phone || "No phone"}</p>
                   </div>
                 </div>
                 <span className="rounded-full bg-[#F1F5F9] px-2 py-0.5 text-[10px] font-medium capitalize text-[#64748B]">

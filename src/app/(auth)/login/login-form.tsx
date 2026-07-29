@@ -9,7 +9,6 @@ import api from "@/lib/axios";
 import { isAxiosError } from "axios";
 import { motion } from "framer-motion";
 import { Lock, Mail, Eye, EyeOff, ShieldCheck } from "lucide-react";
-import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -158,9 +157,6 @@ export default function LoginPage() {
                 <input type="checkbox" className="rounded border-white/20 bg-white/5" {...register("rememberMe")} />
                 Remember me
               </label>
-              <Link href="/forgot-password" className="text-sm text-[#2563EB] hover:text-[#1D4ED8]">
-                Forgot password?
-              </Link>
             </div>
 
             <Button type="submit" className="w-full" loading={loading}>

@@ -147,13 +147,23 @@ export function ChatInput({ onSend, onTypingChange, replyTo, onCancelReply }: Ch
       {attachments.length > 0 && (
         <div className="mb-2 flex flex-wrap gap-2">
           {attachments.map((file) => (
-            <div key={file.id} className="flex items-center gap-2 rounded-full border border-[#E2E8F0] bg-[#F8FAFC] px-3 py-1 text-xs">
-              <span>{file.type === "image" ? "🖼️" : "📎"}</span>
-              <span className="max-w-[180px] truncate">{file.name}</span>
+            <div key={file.id} className="relative overflow-hidden rounded-[10px] border border-[#E2E8F0] bg-[#F8FAFC]">
+              {file.type === "image" ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={file.url} alt={file.name} className="h-20 w-28 object-cover" />
+              ) : (
+                <div className="flex max-w-[220px] items-center gap-2 px-3 py-2 text-xs">
+                  <span>📎</span>
+                  <div className="min-w-0">
+                    <p className="truncate font-medium text-[#0F172A]">{file.name}</p>
+                    <p className="text-[#64748B]">{(file.size / 1024).toFixed(1)} KB</p>
+                  </div>
+                </div>
+              )}
               <button
                 type="button"
                 onClick={() => setAttachments((prev) => prev.filter((item) => item.id !== file.id))}
-                className="text-[#94A3B8] hover:text-[#0F172A]"
+                className="absolute right-1 top-1 flex h-5 w-5 items-center justify-center rounded-full bg-black/60 text-[10px] text-white hover:bg-black/80"
               >
                 ✕
               </button>
