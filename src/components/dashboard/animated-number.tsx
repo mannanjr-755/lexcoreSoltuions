@@ -35,7 +35,7 @@ export function AnimatedNumber({
   }, [value, duration]);
 
   return (
-    <span className="font-mono-num">
+    <span>
       {prefix}
       {display.toLocaleString(undefined, {
         minimumFractionDigits: decimals,

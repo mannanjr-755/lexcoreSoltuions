@@ -84,15 +84,15 @@ export default function LoginPage() {
   return (
     <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.45 }}>
       <Card className="premium-shadow overflow-hidden border-[#E2E8F0] bg-white">
-        <div className="h-1 w-full bg-gradient-to-r from-[#08142D] via-[#D4AF37] to-[#08142D]" />
+        <div className="h-1 w-full bg-[#2563EB]" />
         <CardHeader className="text-center">
-          <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-to-br from-[#08142D] to-[#1E3A8A] shadow-lg shadow-[#08142D]/25">
-            <ShieldCheck className="size-7 text-[#E6C86E]" />
+          <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-[#2563EB] shadow-lg shadow-[#2563EB]/25">
+            <ShieldCheck className="size-7 text-white" />
           </div>
-          <CardTitle className="font-display text-2xl brand-gradient-text">
+          <CardTitle className="text-2xl font-bold text-[#0F172A]">
             Lexcore ERP
           </CardTitle>
-          <p className="mt-2 text-sm text-[#64748B]">Super Admin secure portal</p>
+          <p className="mt-2 text-sm text-[#64748B]">Secure admin portal</p>
         </CardHeader>
         <CardContent>
           <form onSubmit={handleSubmit(onSubmit)} className="space-y-4" noValidate>
@@ -151,7 +151,7 @@ export default function LoginPage() {
                 <input type="checkbox" className="rounded border-white/20 bg-white/5" {...register("rememberMe")} />
                 Remember me
               </label>
-              <Link href="/forgot-password" className="text-sm text-[#C9A227] hover:text-[#D4AF37]">
+              <Link href="/forgot-password" className="text-sm text-[#2563EB] hover:text-[#1D4ED8]">
                 Forgot password?
               </Link>
             </div>

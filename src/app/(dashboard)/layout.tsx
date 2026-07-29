@@ -6,23 +6,21 @@ import { ToastProvider } from "@/components/ui/toast";
 import { Sidebar } from "@/components/layout/sidebar";
 import { Topbar } from "@/components/layout/topbar";
 import { cn } from "@/lib/utils";
-import { useState } from "react";
 
 function DashboardShell({ children }: { children: React.ReactNode }) {
   const { collapsed } = useShell();
-  const [unreadCount, setUnreadCount] = useState(0);
 
   return (
     <div className="min-h-screen bg-[var(--bg-primary)]">
-      <Sidebar unreadCount={unreadCount} />
+      <Sidebar />
       <div
         className={cn(
-          "flex min-h-screen min-w-0 flex-col transition-[padding] duration-300",
-          collapsed ? "lg:pl-[112px]" : "lg:pl-[320px]"
+          "flex min-h-screen min-w-0 flex-col transition-all duration-300",
+          collapsed ? "lg:pl-[72px]" : "lg:pl-[260px]"
         )}
       >
-        <Topbar unreadCount={unreadCount} setUnreadCount={setUnreadCount} />
-        <main className="flex-1 overflow-y-auto px-3 pb-8 pt-4 md:px-5 lg:px-6">{children}</main>
+        <Topbar />
+        <main className="flex-1 px-4 pb-8 pt-5 md:px-6 lg:px-8">{children}</main>
       </div>
     </div>
   );

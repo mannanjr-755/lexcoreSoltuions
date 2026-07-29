@@ -14,7 +14,7 @@ export async function POST(req: Request) {
         userId: session.id,
         userName: session.fullName,
         action: "logout",
-        description: "Super Admin logged out",
+        description: "Admin logged out",
         ipAddress,
         userAgent,
         browser

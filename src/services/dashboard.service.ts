@@ -14,7 +14,7 @@ function growthPct(current: number, previous: number) {
   return ((current - previous) / previous) * 100;
 }
 
-export async function getDashboardStats(userId: string) {
+export async function getDashboardStats() {
   const now = new Date();
   const sixMonthsAgo = new Date(now.getFullYear(), now.getMonth() - 5, 1);
   const { start: curStart, end: curEnd } = monthBounds(0);
@@ -34,8 +34,6 @@ export async function getDashboardStats(userId: string) {
     expenseTotal,
     monthlyPayments,
     monthlyExpenseRows,
-    recentActivities,
-    unreadNotifications,
     upcomingDeadlines,
     latestPayments,
     latestCustomers,
@@ -47,7 +45,6 @@ export async function getDashboardStats(userId: string) {
     curMonthExpenses,
     prevMonthExpenses,
     attendanceAvg,
-    notifications,
     todayAttendanceByStatus,
     todayAttendanceTotal
   ] = await prisma.$transaction([
@@ -90,8 +87,6 @@ export async function getDashboardStats(userId: string) {
       where: { isArchived: false, date: { gte: sixMonthsAgo } },
       select: { date: true, amount: true }
     }),
-    prisma.activityLog.findMany({ orderBy: { createdAt: "desc" }, take: 12 }),
-    prisma.notification.count({ where: { userId, isRead: false } }),
     prisma.project.findMany({
       where: {
         deadline: { gte: now },
@@ -105,12 +100,12 @@ export async function getDashboardStats(userId: string) {
     prisma.payment.findMany({
       orderBy: { createdAt: "desc" },
       take: 6,
-      include: { customer: { select: { name: true, company: true } } }
+      include: { customer: { select: { name: true } } }
     }),
     prisma.customer.findMany({
       orderBy: { createdAt: "desc" },
       take: 6,
-      select: { id: true, name: true, company: true, status: true, createdAt: true, totalCost: true }
+      select: { id: true, name: true, status: true, createdAt: true, totalCost: true }
     }),
     prisma.project.findMany({
       orderBy: { createdAt: "desc" },
@@ -152,11 +147,6 @@ export async function getDashboardStats(userId: string) {
     prisma.employee.aggregate({
       where: { isArchived: false },
       _avg: { attendancePercentage: true }
-    }),
-    prisma.notification.findMany({
-      where: { userId },
-      orderBy: { createdAt: "desc" },
-      take: 8
     }),
     prisma.attendance.groupBy({
       by: ["status"],
@@ -262,7 +252,7 @@ export async function getDashboardStats(userId: string) {
 
   const mapPayments = latestPayments.map((p) => ({
     ...p,
-    customerId: p.customer ? { name: p.customer.name, company: p.customer.company } : p.customerId
+    customerId: p.customer ? { name: p.customer.name } : p.customerId
   }));
 
   return {
@@ -302,17 +292,12 @@ export async function getDashboardStats(userId: string) {
       profit: growthPct(monthlyProfitValue, prevProfit)
     },
     tasks: { today: todayTasks },
-    notifications: {
-      unread: unreadNotifications,
-      items: withMongoIds(serializeNested(notifications))
-    },
     chartData,
     sparks: {
       revenue: chartData.map((c) => c.revenue),
       expenses: chartData.map((c) => c.expenses),
       profit: chartData.map((c) => c.profit)
     },
-    recentActivities: withMongoIds(serializeNested(recentActivities)),
     upcomingDeadlines: withMongoIds(serializeNested(upcomingDeadlines)),
     latestPayments: withMongoIds(serializeNested(mapPayments)),
     latestCustomers: withMongoIds(serializeNested(latestCustomers)),

@@ -57,59 +57,61 @@ export default function SettingsPage() {
   });
 
   return (
-    <div className="mx-auto max-w-4xl space-y-6">
+    <div className="mx-auto max-w-4xl space-y-5 animate-fade-in">
       <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
-        <h1 className="font-[family-name:var(--font-space)] text-3xl font-bold brand-gradient-text">System Settings</h1>
-        <p className="text-[#64748B]">Configure company and system preferences</p>
+        <h1 className="text-xl font-semibold text-[#0F172A]">System Settings</h1>
+        <p className="text-sm text-[#64748B]">Configure company and system preferences</p>
       </motion.div>
 
-      {message && <div className="rounded-xl border border-green-500/30 bg-green-500/10 px-4 py-3 text-sm text-green-400">{message}</div>}
+      {message && (
+        <div className="rounded-[10px] border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-700">{message}</div>
+      )}
 
-      <form onSubmit={form.handleSubmit((v) => mutation.mutate(v))} className="space-y-6">
-        <Card className="premium-shadow">
+      <form onSubmit={form.handleSubmit((v) => mutation.mutate(v))} className="space-y-5">
+        <Card>
           <CardHeader>
-            <CardTitle className="flex items-center gap-2"><Building2 className="size-5 text-[#C9A227]" /> Company</CardTitle>
+            <CardTitle className="flex items-center gap-2"><Building2 className="size-4 text-[#64748B]" /> Company</CardTitle>
           </CardHeader>
           <CardContent className="grid gap-4 sm:grid-cols-2">
-            <div className="space-y-2"><Label>Company Name</Label><Input {...form.register("companyName")} /></div>
-            <div className="space-y-2"><Label>Company Logo URL</Label><Input {...form.register("companyLogo")} /></div>
-            <div className="space-y-2"><Label>Email</Label><Input {...form.register("companyEmail")} /></div>
-            <div className="space-y-2"><Label>Phone</Label><Input {...form.register("companyPhone")} /></div>
-            <div className="space-y-2"><Label>Website</Label><Input {...form.register("companyWebsite")} /></div>
-            <div className="col-span-full space-y-2"><Label>Address</Label><Input {...form.register("companyAddress")} /></div>
+            <div className="space-y-1.5"><Label>Company Name</Label><Input {...form.register("companyName")} /></div>
+            <div className="space-y-1.5"><Label>Company Logo URL</Label><Input {...form.register("companyLogo")} /></div>
+            <div className="space-y-1.5"><Label>Email</Label><Input {...form.register("companyEmail")} /></div>
+            <div className="space-y-1.5"><Label>Phone</Label><Input {...form.register("companyPhone")} /></div>
+            <div className="space-y-1.5"><Label>Website</Label><Input {...form.register("companyWebsite")} /></div>
+            <div className="col-span-full space-y-1.5"><Label>Address</Label><Input {...form.register("companyAddress")} /></div>
           </CardContent>
         </Card>
 
-        <Card className="premium-shadow">
+        <Card>
           <CardHeader>
-            <CardTitle className="flex items-center gap-2"><Mail className="size-5 text-[#C9A227]" /> SMTP Settings</CardTitle>
+            <CardTitle className="flex items-center gap-2"><Mail className="size-4 text-[#64748B]" /> SMTP Settings</CardTitle>
           </CardHeader>
           <CardContent className="grid gap-4 sm:grid-cols-2">
-            <div className="space-y-2"><Label>SMTP Host</Label><Input {...form.register("smtpHost")} placeholder="smtp.gmail.com" /></div>
-            <div className="space-y-2"><Label>SMTP Port</Label><Input type="number" {...form.register("smtpPort")} /></div>
-            <div className="space-y-2"><Label>SMTP User</Label><Input {...form.register("smtpUser")} /></div>
-            <div className="space-y-2"><Label>SMTP Password</Label><Input type="password" {...form.register("smtpPass")} placeholder="********" /></div>
-            <div className="space-y-2"><Label>From Email</Label><Input {...form.register("smtpFrom")} /></div>
+            <div className="space-y-1.5"><Label>SMTP Host</Label><Input {...form.register("smtpHost")} placeholder="smtp.gmail.com" /></div>
+            <div className="space-y-1.5"><Label>SMTP Port</Label><Input type="number" {...form.register("smtpPort")} /></div>
+            <div className="space-y-1.5"><Label>SMTP User</Label><Input {...form.register("smtpUser")} /></div>
+            <div className="space-y-1.5"><Label>SMTP Password</Label><Input type="password" {...form.register("smtpPass")} placeholder="********" /></div>
+            <div className="space-y-1.5"><Label>From Email</Label><Input {...form.register("smtpFrom")} /></div>
           </CardContent>
         </Card>
 
-        <Card className="premium-shadow">
+        <Card>
           <CardHeader>
-            <CardTitle className="flex items-center gap-2"><Globe className="size-5 text-[#C9A227]" /> Preferences & Security</CardTitle>
+            <CardTitle className="flex items-center gap-2"><Globe className="size-4 text-[#64748B]" /> Preferences & Security</CardTitle>
           </CardHeader>
           <CardContent className="grid gap-4 sm:grid-cols-3">
-            <div className="space-y-2"><Label>Currency</Label><Input {...form.register("currency")} /></div>
-            <div className="space-y-2"><Label>Timezone</Label><Input {...form.register("timezone")} /></div>
-            <div className="space-y-2"><Label>Language</Label><Input {...form.register("language")} /></div>
-            <div className="space-y-2">
+            <div className="space-y-1.5"><Label>Currency</Label><Input {...form.register("currency")} /></div>
+            <div className="space-y-1.5"><Label>Timezone</Label><Input {...form.register("timezone")} /></div>
+            <div className="space-y-1.5"><Label>Language</Label><Input {...form.register("language")} /></div>
+            <div className="space-y-1.5">
               <Label>Theme</Label>
-              <select {...form.register("theme")} className="flex h-11 w-full rounded-xl border border-[#E2E8F0] bg-[#F1F5F9] px-4 text-sm">
+              <select {...form.register("theme")} className="flex h-10 w-full rounded-[10px] border border-[#E2E8F0] bg-white px-3 text-sm">
                 <option value="dark">Dark</option>
                 <option value="light">Light</option>
               </select>
             </div>
-            <div className="space-y-2"><Label>Session Timeout (min)</Label><Input type="number" {...form.register("sessionTimeoutMinutes")} /></div>
-            <div className="space-y-2"><Label>Max Login Attempts</Label><Input type="number" {...form.register("maxLoginAttempts")} /></div>
+            <div className="space-y-1.5"><Label>Session Timeout (min)</Label><Input type="number" {...form.register("sessionTimeoutMinutes")} /></div>
+            <div className="space-y-1.5"><Label>Max Login Attempts</Label><Input type="number" {...form.register("maxLoginAttempts")} /></div>
           </CardContent>
         </Card>
 

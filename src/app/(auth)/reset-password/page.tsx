@@ -54,7 +54,7 @@ export default function ResetPasswordPage() {
     <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}>
       <Card className="premium-shadow">
         <CardHeader>
-          <CardTitle className="brand-gradient-text">Reset Password</CardTitle>
+          <CardTitle className="text-xl font-bold text-[#0F172A]">Reset Password</CardTitle>
           <p className="text-sm text-[#64748B]">Enter OTP and your new password</p>
         </CardHeader>
         <CardContent>

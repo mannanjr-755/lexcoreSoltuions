@@ -98,19 +98,6 @@ export const attendanceSchema = z.object({
   notes: z.string().optional()
 });
 
-export const payrollSchema = z.object({
-  employeeId: z.string().min(1),
-  month: z.coerce.number().min(1).max(12),
-  year: z.coerce.number().min(2000),
-  basicSalary: z.coerce.number().min(0),
-  allowances: z.coerce.number().min(0).default(0),
-  deductions: z.coerce.number().min(0).default(0),
-  netSalary: z.coerce.number().min(0),
-  status: z.enum(["draft", "processed", "paid"]).default("draft"),
-  paidAt: z.string().optional(),
-  notes: z.string().optional()
-});
-
 export const documentSchema = z.object({
   title: z.string().min(2),
   category: z.enum(["contract", "invoice", "proposal", "policy", "other"]).default("other"),
@@ -121,11 +108,4 @@ export const documentSchema = z.object({
   isArchived: z.boolean().optional()
 });
 
-export const departmentSchema = z.object({
-  name: z.string().min(2, "Department name is required"),
-  code: z.string().optional(),
-  description: z.string().optional(),
-  managerName: z.string().optional(),
-  status: z.enum(["active", "inactive"]).default("active"),
-  isArchived: z.boolean().optional()
-});
+

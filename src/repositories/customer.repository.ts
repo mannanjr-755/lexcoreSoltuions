@@ -18,8 +18,6 @@ export const customerRepository = {
     if (params.query) {
       where.OR = [
         { name: { contains: params.query, mode: "insensitive" } },
-        { email: { contains: params.query, mode: "insensitive" } },
-        { company: { contains: params.query, mode: "insensitive" } },
         { projectName: { contains: params.query, mode: "insensitive" } },
         { customerId: { contains: params.query, mode: "insensitive" } },
         { phone: { contains: params.query, mode: "insensitive" } }
@@ -67,8 +65,6 @@ export const customerRepository = {
         name: input.name,
         phone: input.phone,
         whatsapp: input.whatsapp,
-        email: input.email.toLowerCase(),
-        company: input.company,
         address: input.address,
         projectName: input.projectName,
         projectType: input.projectType,
@@ -102,8 +98,6 @@ export const customerRepository = {
         ...(input.name !== undefined ? { name: input.name } : {}),
         ...(input.phone !== undefined ? { phone: input.phone } : {}),
         ...(input.whatsapp !== undefined ? { whatsapp: input.whatsapp } : {}),
-        ...(input.email !== undefined ? { email: input.email.toLowerCase() } : {}),
-        ...(input.company !== undefined ? { company: input.company } : {}),
         ...(input.address !== undefined ? { address: input.address } : {}),
         ...(input.projectName !== undefined ? { projectName: input.projectName } : {}),
         ...(input.projectType !== undefined ? { projectType: input.projectType } : {}),

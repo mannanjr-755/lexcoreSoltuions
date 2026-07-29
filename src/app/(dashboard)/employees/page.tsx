@@ -1,30 +1,16 @@
 "use client";
 
-import { useMemo } from "react";
-import { useQuery } from "@tanstack/react-query";
-import api from "@/lib/axios";
 import { formatCurrency } from "@/lib/utils";
 import { ModuleCrudPage } from "@/components/modules/module-crud-page";
 
-export default function EmployeesPage() {
-  const { data } = useQuery({
-    queryKey: ["departments-options"],
-    queryFn: async () => (await api.get("/api/departments", { params: { limit: 100 } })).data
-  });
+const departmentOptions = [
+  { label: "Engineering", value: "Engineering" },
+  { label: "Operations", value: "Operations" },
+  { label: "HR", value: "HR" },
+  { label: "General", value: "General" }
+];
 
-  const departmentOptions = useMemo(() => {
-    const fromApi = (data?.data ?? []).map((d: { name: string }) => ({
-      label: d.name,
-      value: d.name
-    }));
-    if (fromApi.length) return fromApi;
-    return [
-      { label: "Engineering", value: "Engineering" },
-      { label: "Operations", value: "Operations" },
-      { label: "HR", value: "HR" },
-      { label: "General", value: "General" }
-    ];
-  }, [data]);
+export default function EmployeesPage() {
 
   return (
     <ModuleCrudPage

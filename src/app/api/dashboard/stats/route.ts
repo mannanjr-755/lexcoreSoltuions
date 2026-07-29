@@ -8,7 +8,7 @@ export async function GET() {
     const session = await getSession();
     if (!session) return unauthorized();
 
-    const stats = await getDashboardStats(session.id);
+    const stats = await getDashboardStats();
     return NextResponse.json(stats);
   } catch (error) {
     return handleApiError(error);

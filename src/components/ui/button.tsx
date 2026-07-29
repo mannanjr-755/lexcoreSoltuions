@@ -3,27 +3,27 @@
 import { cva, type VariantProps } from "class-variance-authority";
 import { cn } from "@/lib/utils";
 import { Loader2 } from "lucide-react";
-import { forwardRef, type MouseEvent } from "react";
+import { forwardRef } from "react";
 
 const buttonVariants = cva(
-  "btn-ripple inline-flex items-center justify-center gap-2 rounded-[12px] font-semibold transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#D4AF37]/40 disabled:pointer-events-none disabled:opacity-50 active:scale-[0.98]",
+  "inline-flex items-center justify-center gap-2 rounded-[10px] font-medium transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#2563EB]/40 disabled:pointer-events-none disabled:opacity-50 active:scale-[0.97]",
   {
     variants: {
       variant: {
         default:
-          "bg-gradient-to-r from-[#C9A227] to-[#D4AF37] text-white shadow-md shadow-amber-600/20 hover:from-[#D4AF37] hover:to-[#E6C86E] hover:shadow-lg",
+          "bg-[#2563EB] text-white hover:bg-[#1D4ED8] shadow-sm",
         secondary:
-          "border border-[#E2E8F0] bg-white text-[#0F172A] hover:bg-[#F1F5F9]",
+          "border border-[#E2E8F0] bg-white text-[#0F172A] hover:bg-[#F1F5F9] hover:border-[#CBD5E1]",
         ghost: "text-[#64748B] hover:bg-[#F1F5F9] hover:text-[#0F172A]",
-        danger: "border border-red-200 bg-red-50 text-red-600 hover:bg-red-100",
+        danger: "bg-[#EF4444] text-white hover:bg-[#DC2626] shadow-sm",
         outline:
-          "border border-[#D4AF37]/50 bg-white text-[#C9A227] hover:bg-[rgba(212,175,55,0.08)]",
+          "border border-[#2563EB] bg-white text-[#2563EB] hover:bg-[#EFF6FF]",
         accent:
-          "bg-gradient-to-r from-[#08142D] to-[#1E3A8A] text-white shadow-md shadow-slate-900/15 hover:brightness-110"
+          "bg-[#0F172A] text-white hover:bg-[#1E293B] shadow-sm"
       },
       size: {
-        default: "h-11 px-5 text-sm",
-        sm: "h-9 px-4 text-xs",
+        default: "h-10 px-5 text-sm",
+        sm: "h-8 px-3.5 text-xs",
         lg: "h-12 px-8 text-base",
         icon: "h-10 w-10"
       }
@@ -39,21 +39,13 @@ export interface ButtonProps
 }
 
 export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
-  ({ className, variant, size, loading, children, disabled, onClick, type = "button", ...props }, ref) => {
-    const handleClick = (e: MouseEvent<HTMLButtonElement>) => {
-      const rect = e.currentTarget.getBoundingClientRect();
-      e.currentTarget.style.setProperty("--x", `${e.clientX - rect.left}px`);
-      e.currentTarget.style.setProperty("--y", `${e.clientY - rect.top}px`);
-      onClick?.(e);
-    };
-
+  ({ className, variant, size, loading, children, disabled, ...props }, ref) => {
     return (
       <button
         ref={ref}
-        type={type}
+        type="button"
         className={cn(buttonVariants({ variant, size }), className)}
         disabled={disabled || loading}
-        onClick={handleClick}
         {...props}
       >
         {loading && <Loader2 className="size-4 animate-spin" />}

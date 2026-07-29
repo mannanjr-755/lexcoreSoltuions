@@ -11,7 +11,7 @@ export const dynamic = "force-dynamic";
 
 /**
  * POST /api/setup/seed
- * Ensures Super Admin + staff + departments + settings exist.
+ * Ensures admin + staff + departments + settings exist.
  * Call once after first successful migrate deploy.
  */
 export async function POST() {

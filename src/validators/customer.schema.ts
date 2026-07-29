@@ -7,8 +7,6 @@ export const customerCreateSchema = z.object({
   name: z.string().min(2, "Name is required"),
   phone: z.string().min(7, "Phone is required"),
   whatsapp: z.string().optional().or(z.literal("")),
-  email: z.string().email("Valid email required"),
-  company: z.string().optional().or(z.literal("")),
   address: z.string().optional().or(z.literal("")),
   projectName: z.string().min(2, "Project name is required"),
   projectType: z.string().min(2, "Project type is required"),

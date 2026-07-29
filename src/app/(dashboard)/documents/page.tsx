@@ -24,7 +24,7 @@ export default function DocumentsPage() {
           key: "fileUrl",
           label: "File",
           render: (row) => (
-            <a href={String(row.fileUrl)} target="_blank" rel="noreferrer" className="text-amber-300 hover:underline">
+            <a href={String(row.fileUrl)} target="_blank" rel="noreferrer" className="text-[#2563EB] hover:underline">
               Open
             </a>
           )

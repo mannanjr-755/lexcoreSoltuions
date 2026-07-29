@@ -82,47 +82,49 @@ export default function ProfilePage() {
   });
 
   return (
-    <div className="mx-auto max-w-3xl space-y-6">
+    <div className="mx-auto max-w-3xl space-y-5 animate-fade-in">
       <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
-        <h1 className="font-[family-name:var(--font-space)] text-3xl font-bold brand-gradient-text">Profile</h1>
-        <p className="text-[#64748B]">Manage your account settings</p>
+        <h1 className="text-xl font-semibold text-[#0F172A]">Profile</h1>
+        <p className="text-sm text-[#64748B]">Manage your account settings</p>
       </motion.div>
 
-      <Card className="premium-shadow">
+      <Card>
         <CardHeader>
-          <CardTitle className="flex items-center gap-2"><User className="size-5 text-[#C9A227]" /> Profile Information</CardTitle>
+          <CardTitle className="flex items-center gap-2"><User className="size-4 text-[#64748B]" /> Profile Information</CardTitle>
         </CardHeader>
         <CardContent>
-          {profileMsg && <div className="mb-4 rounded-xl border border-green-500/30 bg-green-500/10 px-4 py-3 text-sm text-green-400">{profileMsg}</div>}
+          {profileMsg && (
+            <div className="mb-4 rounded-[10px] border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-700">{profileMsg}</div>
+          )}
           <form onSubmit={profileForm.handleSubmit((v) => updateProfile.mutate(v))} className="space-y-4">
             <div className="grid gap-4 sm:grid-cols-2">
-              <div className="space-y-2">
+              <div className="space-y-1.5">
                 <Label>Full Name</Label>
                 <Input {...profileForm.register("fullName")} />
               </div>
-              <div className="space-y-2">
+              <div className="space-y-1.5">
                 <Label>Phone</Label>
                 <Input {...profileForm.register("phone")} />
               </div>
-              <div className="space-y-2">
+              <div className="space-y-1.5">
                 <Label>Company</Label>
                 <Input {...profileForm.register("company")} />
               </div>
-              <div className="space-y-2">
+              <div className="space-y-1.5">
                 <Label>Designation</Label>
                 <Input {...profileForm.register("designation")} />
               </div>
-              <div className="col-span-full space-y-2">
+              <div className="col-span-full space-y-1.5">
                 <Label>Address</Label>
                 <Input {...profileForm.register("address")} />
               </div>
-              <div className="col-span-full space-y-2">
+              <div className="col-span-full space-y-1.5">
                 <Label>Profile Photo URL</Label>
                 <Input {...profileForm.register("profilePhoto")} placeholder="https://..." />
               </div>
             </div>
             {data?.user && (
-              <div className="rounded-lg border border-[#E2E8F0] p-3 text-sm text-[#64748B]">
+              <div className="rounded-[10px] border border-[#E2E8F0] bg-[#F8FAFC] p-3 text-sm text-[#64748B]">
                 <p>Last login: {data.user.lastLoginAt ? formatDateTime(data.user.lastLoginAt) : "N/A"}</p>
                 <p>IP: {data.user.lastLoginIp ?? "N/A"}</p>
               </div>
@@ -132,28 +134,34 @@ export default function ProfilePage() {
         </CardContent>
       </Card>
 
-      <Card className="premium-shadow">
+      <Card>
         <CardHeader>
-          <CardTitle className="flex items-center gap-2"><Lock className="size-5 text-[#C9A227]" /> Change Password</CardTitle>
+          <CardTitle className="flex items-center gap-2"><Lock className="size-4 text-[#64748B]" /> Change Password</CardTitle>
         </CardHeader>
         <CardContent>
-          {passwordMsg && <div className="mb-4 rounded-xl border border-green-500/30 bg-green-500/10 px-4 py-3 text-sm text-green-400">{passwordMsg}</div>}
-          {passwordErr && <div className="mb-4 rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-400">{passwordErr}</div>}
+          {passwordMsg && (
+            <div className="mb-4 rounded-[10px] border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-700">{passwordMsg}</div>
+          )}
+          {passwordErr && (
+            <div className="mb-4 rounded-[10px] border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-600">{passwordErr}</div>
+          )}
           <form onSubmit={passwordForm.handleSubmit((v) => changePassword.mutate(v))} className="space-y-4">
-            <div className="space-y-2">
-              <Label>Current Password</Label>
-              <Input type="password" {...passwordForm.register("currentPassword")} />
-            </div>
-            <div className="space-y-2">
-              <Label>New Password</Label>
-              <Input type="password" {...passwordForm.register("newPassword")} />
-            </div>
-            <div className="space-y-2">
-              <Label>Confirm Password</Label>
-              <Input type="password" {...passwordForm.register("confirmPassword")} />
-              {passwordForm.formState.errors.confirmPassword && (
-                <p className="text-xs text-red-400">{passwordForm.formState.errors.confirmPassword.message}</p>
-              )}
+            <div className="grid gap-4 sm:grid-cols-3">
+              <div className="space-y-1.5">
+                <Label>Current Password</Label>
+                <Input type="password" {...passwordForm.register("currentPassword")} />
+              </div>
+              <div className="space-y-1.5">
+                <Label>New Password</Label>
+                <Input type="password" {...passwordForm.register("newPassword")} />
+              </div>
+              <div className="space-y-1.5">
+                <Label>Confirm Password</Label>
+                <Input type="password" {...passwordForm.register("confirmPassword")} />
+                {passwordForm.formState.errors.confirmPassword && (
+                  <p className="text-xs text-[#EF4444]">{passwordForm.formState.errors.confirmPassword.message}</p>
+                )}
+              </div>
             </div>
             <Button type="submit" loading={changePassword.isPending}>Change Password</Button>
           </form>

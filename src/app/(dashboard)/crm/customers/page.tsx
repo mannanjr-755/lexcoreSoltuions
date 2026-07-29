@@ -1,11 +1,11 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { motion } from "framer-motion";
-import { Plus, Search, Pencil, Trash2, FileSpreadsheet, FileText, Download } from "lucide-react";
+import { Plus, Search, Pencil, Trash2, FileSpreadsheet, Download } from "lucide-react";
 import { isAxiosError } from "axios";
 import api from "@/lib/axios";
 import { exportToCsv, exportToExcel } from "@/lib/export";
@@ -25,9 +25,7 @@ type Customer = {
   _id: string;
   customerId: string;
   name: string;
-  email: string;
   phone: string;
-  company?: string;
   projectName: string;
   projectType: string;
   status: string;
@@ -40,10 +38,19 @@ type Customer = {
   notes?: string;
 };
 
+const statusColors: Record<string, string> = {
+  lead: "bg-[#FEF3C7] text-[#D97706]",
+  active: "bg-[#EFF6FF] text-[#2563EB]",
+  on_hold: "bg-[#F1F5F9] text-[#64748B]",
+  completed: "bg-[#F0FDF4] text-[#22C55E]",
+  cancelled: "bg-[#FEF2F2] text-[#EF4444]"
+};
+
 export default function CustomersPage() {
   const { user } = useAuth();
   const toast = useToast();
   const queryClient = useQueryClient();
+  const [searchInput, setSearchInput] = useState("");
   const [query, setQuery] = useState("");
   const [status, setStatus] = useState("");
   const [page, setPage] = useState(1);
@@ -51,6 +58,15 @@ export default function CustomersPage() {
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState<Customer | null>(null);
   const [deleteId, setDeleteId] = useState<string | null>(null);
+  const submitLockRef = useRef(false);
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setQuery(searchInput);
+      setPage(1);
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [searchInput]);
 
   const { data, isLoading, isError } = useQuery({
     queryKey: ["customers", query, status, page],
@@ -71,7 +87,6 @@ export default function CustomersPage() {
     defaultValues: {
       name: "",
       phone: "",
-      email: "",
       projectName: "",
       projectType: "Web Application",
       totalCost: 0,
@@ -89,10 +104,6 @@ export default function CustomersPage() {
     form.reset({
       name: "",
       phone: "",
-      email: "",
-      company: "",
-      address: "",
-      whatsapp: "",
       projectName: "",
       projectType: "Web Application",
       totalCost: 0,
@@ -112,8 +123,6 @@ export default function CustomersPage() {
     form.reset({
       name: customer.name,
       phone: customer.phone,
-      email: customer.email,
-      company: customer.company ?? "",
       projectName: customer.projectName,
       projectType: customer.projectType,
       totalCost: customer.totalCost,
@@ -146,6 +155,7 @@ export default function CustomersPage() {
       toast.success(editing ? "Customer updated" : "Customer created successfully");
       setModalOpen(false);
       setEditing(null);
+      submitLockRef.current = false;
       form.reset();
       setPage(1);
       await Promise.all([
@@ -156,6 +166,7 @@ export default function CustomersPage() {
       ]);
     },
     onError: (err) => {
+      submitLockRef.current = false;
       const message = isAxiosError(err)
         ? err.response?.data?.message ?? "Save failed"
         : "Save failed";
@@ -200,9 +211,7 @@ export default function CustomersPage() {
       customers.map((c) => ({
         ID: c.customerId,
         Name: c.name,
-        Email: c.email,
         Phone: c.phone,
-        Company: c.company ?? "",
         Project: c.projectName,
         Status: c.status,
         Total: c.totalCost,
@@ -222,44 +231,41 @@ export default function CustomersPage() {
   };
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-5 animate-fade-in">
       <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="flex flex-wrap items-center justify-between gap-4">
         <div>
-          <h1 className="font-[family-name:var(--font-space)] text-3xl font-bold brand-gradient-text">CRM Customers</h1>
-          <p className="text-[#64748B]">
-            {total} customers · Revenue {formatCurrency(data?.financials?.totalRevenue ?? 0)} · Pending{" "}
+          <h1 className="text-xl font-semibold text-[#0F172A]">CRM Customers</h1>
+          <p className="text-sm text-[#64748B]">
+            {total} customers &middot; Revenue {formatCurrency(data?.financials?.totalRevenue ?? 0)} &middot; Pending{" "}
             {formatCurrency(data?.financials?.totalPending ?? 0)}
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
-          <Button variant="secondary" onClick={() => exportToCsv("customers", exportRows)} disabled={!exportRows.length}>
+          <Button variant="secondary" size="sm" onClick={() => exportToCsv("customers", exportRows)} disabled={!exportRows.length}>
             <Download className="size-4" /> CSV
           </Button>
-          <Button variant="secondary" onClick={() => exportToExcel("customers", exportRows)} disabled={!exportRows.length}>
+          <Button variant="secondary" size="sm" onClick={() => exportToExcel("customers", exportRows)} disabled={!exportRows.length}>
             <FileSpreadsheet className="size-4" /> Excel
           </Button>
-          <Button onClick={openCreate}>
+          <Button size="sm" onClick={openCreate}>
             <Plus className="size-4" /> Add Customer
           </Button>
         </div>
       </motion.div>
 
-      <Card className="premium-shadow">
-        <CardContent className="flex flex-wrap gap-3 p-4">
-          <div className="relative min-w-[220px] flex-1">
+      <Card>
+        <CardContent className="flex flex-wrap items-center gap-3">
+          <div className="relative min-w-[200px] flex-1">
             <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-[#64748B]" />
             <Input
-              className="pl-10"
+              className="pl-9"
               placeholder="Search customers..."
-              value={query}
-              onChange={(e) => {
-                setPage(1);
-                setQuery(e.target.value);
-              }}
+              value={searchInput}
+              onChange={(e) => setSearchInput(e.target.value)}
             />
           </div>
           <select
-            className="h-11 rounded-xl border border-[#E2E8F0] bg-[#F1F5F9] px-4 text-sm"
+            className="h-10 rounded-[10px] border border-[#E2E8F0] bg-white px-3 text-sm"
             value={status}
             onChange={(e) => {
               setPage(1);
@@ -274,18 +280,18 @@ export default function CustomersPage() {
             <option value="cancelled">Cancelled</option>
           </select>
           {selected.length > 0 ? (
-            <Button variant="danger" onClick={() => bulkDeleteMutation.mutate(selected)} loading={bulkDeleteMutation.isPending}>
+            <Button variant="danger" size="sm" onClick={() => bulkDeleteMutation.mutate(selected)} loading={bulkDeleteMutation.isPending}>
               <Trash2 className="size-4" /> Delete ({selected.length})
             </Button>
           ) : null}
         </CardContent>
       </Card>
 
-      <div className="overflow-hidden rounded-2xl border border-white/[0.08] bg-white/80 backdrop-blur-xl">
+      <div className="rounded-[16px] border border-[#E2E8F0] bg-white overflow-hidden premium-shadow">
         {isLoading ? (
           <TableSkeleton />
         ) : isError ? (
-          <div className="p-8 text-center text-red-400">Failed to load customers. Check database connection.</div>
+          <div className="p-8 text-center text-sm text-[#EF4444]">Failed to load customers.</div>
         ) : customers.length === 0 ? (
           <EmptyState
             title="No customers yet"
@@ -295,50 +301,60 @@ export default function CustomersPage() {
           />
         ) : (
           <>
-            <table className="w-full text-left text-sm">
-              <thead className="sticky top-0 border-b border-[#E2E8F0] bg-[#F1F5F9]">
-                <tr>
-                  <th className="px-4 py-3">
-                    <input type="checkbox" checked={selected.length === customers.length} onChange={toggleAll} />
-                  </th>
-                  <th className="px-4 py-3 font-medium text-[#64748B]">ID</th>
-                  <th className="px-4 py-3 font-medium text-[#64748B]">Customer</th>
-                  <th className="px-4 py-3 font-medium text-[#64748B]">Project</th>
-                  <th className="px-4 py-3 font-medium text-[#64748B]">Status</th>
-                  <th className="px-4 py-3 font-medium text-[#64748B]">Total</th>
-                  <th className="px-4 py-3 font-medium text-[#64748B]">Pending</th>
-                  <th className="px-4 py-3 font-medium text-[#64748B]">Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {customers.map((item) => (
-                  <tr key={item._id} className="border-b border-[#E2E8F0] transition hover:bg-[#F8FAFC]">
-                    <td className="px-4 py-3">
-                      <input type="checkbox" checked={selected.includes(item._id)} onChange={() => toggleSelect(item._id)} />
-                    </td>
-                    <td className="px-4 py-3 font-mono text-xs text-[#C9A227]">{item.customerId}</td>
-                    <td className="px-4 py-3">
-                      <div className="font-medium">{item.name}</div>
-                      <div className="text-xs text-[#64748B]">{item.email}</div>
-                    </td>
-                    <td className="px-4 py-3">{item.projectName}</td>
-                    <td className="px-4 py-3 capitalize text-[#C9A227]">{item.status.replace("_", " ")}</td>
-                    <td className="px-4 py-3">{formatCurrency(item.totalCost)}</td>
-                    <td className="px-4 py-3 text-red-400">{formatCurrency(item.remainingAmount)}</td>
-                    <td className="px-4 py-3">
-                      <div className="flex gap-2">
-                        <Button size="icon" variant="ghost" onClick={() => openEdit(item)}>
-                          <Pencil className="size-4" />
-                        </Button>
-                        <Button size="icon" variant="ghost" onClick={() => setDeleteId(item._id)}>
-                          <Trash2 className="size-4 text-red-400" />
-                        </Button>
-                      </div>
-                    </td>
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-sm">
+                <thead>
+                  <tr className="border-b border-[#E2E8F0] bg-[#F8FAFC]">
+                    <th className="px-4 py-3 w-10">
+                      <input type="checkbox" checked={selected.length === customers.length} onChange={toggleAll} className="rounded" />
+                    </th>
+                    <th className="px-4 py-3 font-medium text-[#64748B] text-xs uppercase tracking-wider">Customer</th>
+                    <th className="px-4 py-3 font-medium text-[#64748B] text-xs uppercase tracking-wider">Project</th>
+                    <th className="px-4 py-3 font-medium text-[#64748B] text-xs uppercase tracking-wider">Status</th>
+                    <th className="px-4 py-3 font-medium text-[#64748B] text-xs uppercase tracking-wider text-right">Total</th>
+                    <th className="px-4 py-3 font-medium text-[#64748B] text-xs uppercase tracking-wider text-right">Pending</th>
+                    <th className="px-4 py-3 font-medium text-[#64748B] text-xs uppercase tracking-wider text-right">Actions</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody>
+                  {customers.map((item) => (
+                    <tr key={item._id} className="border-b border-[#E2E8F0] transition hover:bg-[#F8FAFC]">
+                      <td className="px-4 py-3">
+                        <input type="checkbox" checked={selected.includes(item._id)} onChange={() => toggleSelect(item._id)} className="rounded" />
+                      </td>
+                      <td className="px-4 py-3">
+                        <div className="flex items-center gap-3">
+                          <div className="flex h-8 w-8 items-center justify-center rounded-[8px] bg-[#EFF6FF] text-xs font-bold text-[#2563EB]">
+                            {item.name.charAt(0)}
+                          </div>
+                          <div>
+                            <p className="font-medium text-[#0F172A]">{item.name}</p>
+                          </div>
+                        </div>
+                      </td>
+                      <td className="px-4 py-3 text-[#0F172A]">{item.projectName}</td>
+                      <td className="px-4 py-3">
+                        <span className={["inline-flex rounded-full px-2 py-0.5 text-[11px] font-medium", statusColors[item.status] ?? "bg-[#F1F5F9] text-[#64748B]"].join(" ")}>
+                          {item.status.replace("_", " ")}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3 text-right font-medium">{formatCurrency(item.totalCost)}</td>
+                      <td className="px-4 py-3 text-right text-[#EF4444]">{formatCurrency(item.remainingAmount)}</td>
+                      <td className="px-4 py-3 text-right">
+                        <div className="flex justify-end gap-1">
+                          <Button size="icon" variant="ghost" onClick={() => openEdit(item)}>
+                            <Pencil className="size-4" />
+                          </Button>
+                          <Button size="icon" variant="ghost" onClick={() => setDeleteId(item._id)}>
+                            <Trash2 className="size-4 text-[#EF4444]" />
+                          </Button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
             <div className="flex items-center justify-between border-t border-[#E2E8F0] px-4 py-3 text-sm text-[#64748B]">
               <span>
                 Page {page} of {totalPages}
@@ -357,75 +373,67 @@ export default function CustomersPage() {
       </div>
 
       {modalOpen ? (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm">
-          <Card className="max-h-[90vh] w-full max-w-2xl overflow-y-auto premium-shadow">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm">
+          <Card className="max-h-[90vh] w-full max-w-2xl overflow-y-auto">
             <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <FileText className="size-5 text-[#C9A227]" />
-                {editing ? "Edit Customer" : "Add Customer"}
-              </CardTitle>
+              <CardTitle>{editing ? "Edit Customer" : "Add Customer"}</CardTitle>
             </CardHeader>
             <CardContent>
               <form
                 onSubmit={form.handleSubmit(
-                  (values) => saveMutation.mutate(values),
+                  (values) => {
+                    if (submitLockRef.current || saveMutation.isPending) return;
+                    submitLockRef.current = true;
+                    saveMutation.mutate(values);
+                  },
                   () => toast.error("Please fix the highlighted form fields")
                 )}
                 className="grid gap-4 sm:grid-cols-2"
                 noValidate
               >
-                <div className="space-y-2">
+                <div className="space-y-1.5">
                   <Label>Name *</Label>
                   <Input {...form.register("name")} />
-                  {form.formState.errors.name ? <p className="text-xs text-red-500">{form.formState.errors.name.message}</p> : null}
+                  {form.formState.errors.name ? <p className="text-xs text-[#EF4444]">{form.formState.errors.name.message}</p> : null}
                 </div>
-                <div className="space-y-2">
-                  <Label>Email *</Label>
-                  <Input type="email" {...form.register("email")} />
-                  {form.formState.errors.email ? <p className="text-xs text-red-500">{form.formState.errors.email.message}</p> : null}
-                </div>
-                <div className="space-y-2">
+                <div className="space-y-1.5">
                   <Label>Phone *</Label>
                   <Input {...form.register("phone")} />
-                  {form.formState.errors.phone ? <p className="text-xs text-red-500">{form.formState.errors.phone.message}</p> : null}
+                  {form.formState.errors.phone ? <p className="text-xs text-[#EF4444]">{form.formState.errors.phone.message}</p> : null}
                 </div>
-                <div className="space-y-2">
-                  <Label>Company</Label>
-                  <Input {...form.register("company")} />
-                </div>
-                <div className="space-y-2">
+                <div className="space-y-1.5">
                   <Label>Project Name *</Label>
                   <Input {...form.register("projectName")} />
                   {form.formState.errors.projectName ? (
-                    <p className="text-xs text-red-500">{form.formState.errors.projectName.message}</p>
+                    <p className="text-xs text-[#EF4444]">{form.formState.errors.projectName.message}</p>
                   ) : null}
                 </div>
-                <div className="space-y-2">
+                <div className="space-y-1.5">
                   <Label>Project Type *</Label>
                   <Input {...form.register("projectType")} />
                 </div>
-                <div className="space-y-2">
+                <div className="space-y-1.5">
                   <Label>Total Cost</Label>
                   <Input type="number" step="0.01" {...form.register("totalCost", { valueAsNumber: true })} />
                 </div>
-                <div className="space-y-2">
+                <div className="space-y-1.5">
                   <Label>Advance Paid</Label>
                   <Input type="number" step="0.01" {...form.register("advancePaid", { valueAsNumber: true })} />
                 </div>
-                <div className="space-y-2">
+                <div className="space-y-1.5">
                   <Label>Additional Paid</Label>
                   <Input type="number" step="0.01" {...form.register("paidAmount", { valueAsNumber: true })} />
                 </div>
-                <div className="space-y-2">
+                <div className="space-y-1.5">
                   <Label>Deadline *</Label>
                   <Input type="date" {...form.register("projectDeadline")} />
                   {form.formState.errors.projectDeadline ? (
-                    <p className="text-xs text-red-500">{form.formState.errors.projectDeadline.message}</p>
+                    <p className="text-xs text-[#EF4444]">{form.formState.errors.projectDeadline.message}</p>
                   ) : null}
                 </div>
-                <div className="space-y-2">
+                <div className="space-y-1.5">
                   <Label>Status</Label>
-                  <select className="h-11 w-full rounded-xl border border-[#E2E8F0] bg-white px-4 text-sm" {...form.register("status")}>
+                  <select className="h-10 w-full rounded-[10px] border border-[#E2E8F0] bg-white px-3 text-sm" {...form.register("status")}>
                     <option value="lead">Lead</option>
                     <option value="active">Active</option>
                     <option value="on_hold">On Hold</option>
@@ -433,16 +441,16 @@ export default function CustomersPage() {
                     <option value="cancelled">Cancelled</option>
                   </select>
                 </div>
-                <div className="space-y-2">
+                <div className="space-y-1.5">
                   <Label>Priority</Label>
-                  <select className="h-11 w-full rounded-xl border border-[#E2E8F0] bg-white px-4 text-sm" {...form.register("priority")}>
+                  <select className="h-10 w-full rounded-[10px] border border-[#E2E8F0] bg-white px-3 text-sm" {...form.register("priority")}>
                     <option value="low">Low</option>
                     <option value="medium">Medium</option>
                     <option value="high">High</option>
                     <option value="urgent">Urgent</option>
                   </select>
                 </div>
-                <div className="col-span-full space-y-2">
+                <div className="col-span-full space-y-1.5">
                   <Label>Notes</Label>
                   <Input {...form.register("notes")} />
                 </div>

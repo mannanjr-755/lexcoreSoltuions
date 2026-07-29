@@ -67,15 +67,15 @@ async function main() {
       role: "super_admin",
       isActive: true,
       passwordHash,
-      fullName: process.env.SUPER_ADMIN_NAME ?? "Super Admin"
+      fullName: process.env.SUPER_ADMIN_NAME ?? "Admin"
     },
     create: {
-      fullName: process.env.SUPER_ADMIN_NAME ?? "Super Admin",
+      fullName: process.env.SUPER_ADMIN_NAME ?? "Admin",
       email,
       passwordHash,
       role: "super_admin",
       company: "Lexcore Solutions",
-      designation: "Super Admin"
+      designation: "Administrator"
     }
   });
 
@@ -131,7 +131,7 @@ async function main() {
     });
   }
 
-  console.log("Seed complete: Super Admin, departments, staff, settings");
+  console.log("Seed complete: admin, departments, staff, settings");
 }
 
 main()

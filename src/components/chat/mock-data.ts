@@ -1,0 +1,160 @@
+import type { TeamMember, Message, Workspace } from "./chat-types";
+
+const now = Date.now();
+const ms = (m: number) => m * 60_000;
+const h = (hr: number) => hr * 3_600_000;
+
+export const currentUserId = "abdul";
+
+export const teamMembers: TeamMember[] = [
+  { id: "abdul", name: "Abdul", role: "Admin", avatar: "", isOnline: true, color: "#2563EB" },
+  { id: "ali", name: "Ali", role: "Manager", avatar: "", isOnline: true, color: "#7C3AED" },
+  { id: "ahmed", name: "Ahmed", role: "Developer", avatar: "", isOnline: true, color: "#059669" },
+  { id: "hassan", name: "Hassan", role: "Designer", avatar: "", isOnline: false, color: "#D97706" },
+  { id: "bilal", name: "Bilal", role: "Support", avatar: "", isOnline: true, color: "#DC2626" },
+];
+
+export const workspace: Workspace = {
+  id: "lexcore-team",
+  name: "Lexcore Solutions",
+  memberCount: 5,
+  members: teamMembers,
+};
+
+export const teamMessages: Message[] = [
+  {
+    id: "m1",
+    senderId: "abdul",
+    text: "Hello team \u{1F44B}",
+    timestamp: new Date(now - h(3) - ms(40)).toISOString(),
+    status: "read",
+    isEdited: false,
+    isDeleted: false,
+  },
+  {
+    id: "m2",
+    senderId: "ahmed",
+    text: "Project API has been completed.",
+    timestamp: new Date(now - h(3) - ms(35)).toISOString(),
+    status: "read",
+    isEdited: false,
+    isDeleted: false,
+  },
+  {
+    id: "m3",
+    senderId: "ali",
+    text: "Great work.",
+    timestamp: new Date(now - h(3) - ms(30)).toISOString(),
+    status: "read",
+    isEdited: false,
+    isDeleted: false,
+  },
+  {
+    id: "m4",
+    senderId: "hassan",
+    text: "UI updates are almost finished.",
+    timestamp: new Date(now - h(3) - ms(25)).toISOString(),
+    status: "read",
+    isEdited: false,
+    isDeleted: false,
+  },
+  {
+    id: "m5",
+    senderId: "bilal",
+    text: "Testing is in progress.",
+    timestamp: new Date(now - h(3) - ms(20)).toISOString(),
+    status: "read",
+    isEdited: false,
+    isDeleted: false,
+  },
+  {
+    id: "m6",
+    senderId: "abdul",
+    text: "Let's target end of day for the staging deploy. Everyone sync your branches.",
+    timestamp: new Date(now - h(2) - ms(50)).toISOString(),
+    status: "read",
+    isEdited: false,
+    isDeleted: false,
+  },
+  {
+    id: "m7",
+    senderId: "ahmed",
+    text: "Already pushed. The API endpoints are stable now. \u{1F680}",
+    timestamp: new Date(now - h(2) - ms(45)).toISOString(),
+    status: "read",
+    isEdited: false,
+    isDeleted: false,
+  },
+  {
+    id: "m8",
+    senderId: "hassan",
+    text: "Design system updates are merged. The new component library looks much cleaner.",
+    timestamp: new Date(now - h(2) - ms(30)).toISOString(),
+    status: "read",
+    isEdited: false,
+    isDeleted: false,
+  },
+  {
+    id: "m9",
+    senderId: "ali",
+    text: "I've updated the project timeline. We're ahead of schedule by 2 days. \u{1F4C8}",
+    timestamp: new Date(now - h(2)).toISOString(),
+    status: "read",
+    isEdited: false,
+    isDeleted: false,
+  },
+  {
+    id: "m10",
+    senderId: "bilal",
+    text: "All critical test cases passing. Found 2 minor UI bugs, logged them.",
+    timestamp: new Date(now - h(1) - ms(30)).toISOString(),
+    status: "read",
+    isEdited: false,
+    isDeleted: false,
+  },
+  {
+    id: "m11",
+    senderId: "abdul",
+    text: "Excellent progress team! Let's do a quick standup in 15 minutes.",
+    timestamp: new Date(now - h(1)).toISOString(),
+    status: "read",
+    isEdited: false,
+    isDeleted: false,
+  },
+  {
+    id: "m12",
+    senderId: "ahmed",
+    text: "Sounds good, I'll prepare the API docs summary.",
+    timestamp: new Date(now - ms(55)).toISOString(),
+    status: "read",
+    isEdited: false,
+    isDeleted: false,
+  },
+  {
+    id: "m13",
+    senderId: "hassan",
+    text: "I'll share the final mockups for the dashboard redesign.",
+    timestamp: new Date(now - ms(50)).toISOString(),
+    status: "delivered",
+    isEdited: false,
+    isDeleted: false,
+  },
+  {
+    id: "m14",
+    senderId: "ali",
+    text: "Perfect. Client meeting is at 4 PM, so let's have everything ready by 3.",
+    timestamp: new Date(now - ms(30)).toISOString(),
+    status: "delivered",
+    isEdited: false,
+    isDeleted: false,
+  },
+  {
+    id: "m15",
+    senderId: "bilal",
+    text: "On it! \u2705",
+    timestamp: new Date(now - ms(25)).toISOString(),
+    status: "sent",
+    isEdited: false,
+    isDeleted: false,
+  },
+];

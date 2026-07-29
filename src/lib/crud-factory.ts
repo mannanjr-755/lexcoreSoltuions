@@ -8,7 +8,6 @@ import {
   createDocument,
   duplicateDocument,
   listDocuments,
-  purgeArchivedDocuments,
   removeDocument,
   removeManyDocuments,
   updateDocument,
@@ -45,10 +44,6 @@ export function createCrudHandlers(config: CrudConfig) {
     try {
       const session = await getSession();
       if (!session) return unauthorized();
-
-      if (config.hasArchived !== false) {
-        await purgeArchivedDocuments(config.delegate);
-      }
 
       const params = parseListParams(req);
       if (params.archived === "1") {

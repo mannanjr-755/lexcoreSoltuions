@@ -43,7 +43,7 @@ export default function ForgotPasswordPage() {
     <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}>
       <Card className="premium-shadow">
         <CardHeader>
-          <CardTitle className="brand-gradient-text">Forgot Password</CardTitle>
+          <CardTitle className="text-xl font-bold text-[#0F172A]">Forgot Password</CardTitle>
           <p className="text-sm text-[#64748B]">Enter your email to receive an OTP</p>
         </CardHeader>
         <CardContent>
@@ -59,7 +59,7 @@ export default function ForgotPasswordPage() {
               {errors.email && <p className="text-xs text-red-400">{errors.email.message}</p>}
             </div>
             <Button type="submit" className="w-full" loading={loading}>Send OTP</Button>
-            <Link href="/reset-password" className="block text-center text-sm text-[#C9A227] hover:text-[#D4AF37]">
+            <Link href="/reset-password" className="block text-center text-sm text-[#2563EB] hover:text-[#1D4ED8]">
               Already have an OTP? Reset password
             </Link>
             <Link href="/login" className="flex items-center justify-center gap-2 text-sm text-[#64748B] hover:text-[#0F172A]">

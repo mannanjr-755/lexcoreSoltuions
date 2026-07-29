@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { motion } from "framer-motion";
 import {
@@ -137,7 +137,7 @@ function EmployeeCombobox({
                   type="button"
                   className={cn(
                     "flex w-full flex-col rounded-xl px-3 py-2 text-left text-sm hover:bg-[#F1F5F9]",
-                    value === e._id && "bg-[rgba(212,175,55,0.12)]"
+                    value === e._id && "bg-[#EFF6FF]"
                   )}
                   onClick={() => {
                     onChange(e._id, e);
@@ -162,6 +162,7 @@ function EmployeeCombobox({
 export default function AttendancePage() {
   const toast = useToast();
   const queryClient = useQueryClient();
+  const [searchInput, setSearchInput] = useState("");
   const [query, setQuery] = useState("");
   const [status, setStatus] = useState("");
   const [department, setDepartment] = useState("");
@@ -173,6 +174,15 @@ export default function AttendancePage() {
   const [form, setForm] = useState<FormState>(emptyForm);
   const [deleteId, setDeleteId] = useState<string | null>(null);
   const [formError, setFormError] = useState("");
+  const submitLockRef = useRef(false);
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setQuery(searchInput);
+      setPage(1);
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [searchInput]);
 
   const { data: employeesData, isLoading: employeesLoading } = useQuery({
     queryKey: ["employees-options"],
@@ -316,9 +326,9 @@ export default function AttendancePage() {
         className="flex flex-wrap items-end justify-between gap-4"
       >
         <div>
-          <h1 className="font-display text-3xl font-bold brand-gradient-text">Attendance</h1>
-          <p className="mt-1 text-sm text-[#64748B]">
-            Mark and manage daily attendance — employees load live from MongoDB
+          <h1 className="text-xl font-semibold text-[#0F172A]">Attendance</h1>
+          <p className="mt-0.5 text-sm text-[#64748B]">
+            Mark and manage daily attendance
           </p>
         </div>
         <Button onClick={openCreate} disabled={employeesLoading || employees.length === 0}>
@@ -326,17 +336,14 @@ export default function AttendancePage() {
         </Button>
       </motion.div>
 
-      <div className="glass-card premium-shadow flex flex-wrap items-center gap-3 p-4">
+      <div className="rounded-[12px] border border-[#E2E8F0] bg-white p-4 premium-shadow flex flex-wrap items-center gap-3">
         <div className="relative min-w-[220px] flex-1">
           <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-[#64748B]" />
           <Input
             className="pl-10"
             placeholder="Search by employee name..."
-            value={query}
-            onChange={(e) => {
-              setQuery(e.target.value);
-              setPage(1);
-            }}
+            value={searchInput}
+            onChange={(e) => setSearchInput(e.target.value)}
           />
         </div>
         <select
@@ -377,7 +384,7 @@ export default function AttendancePage() {
         </Button>
       </div>
 
-      <div className="glass-card premium-shadow overflow-hidden">
+      <div className="rounded-[16px] border border-[#E2E8F0] bg-white overflow-hidden premium-shadow">
         {isLoading ? (
           <div className="p-4">
             <TableSkeleton />
@@ -478,7 +485,7 @@ export default function AttendancePage() {
       </div>
 
       {modalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#08142D]/45 p-4 backdrop-blur-sm">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm">
           <motion.div
             initial={{ opacity: 0, scale: 0.96 }}
             animate={{ opacity: 1, scale: 1 }}
@@ -583,7 +590,13 @@ export default function AttendancePage() {
               <Button variant="secondary" onClick={() => setModalOpen(false)}>
                 Cancel
               </Button>
-              <Button loading={saveMutation.isPending} onClick={() => saveMutation.mutate(form)}>
+              <Button loading={saveMutation.isPending} onClick={() => {
+              if (submitLockRef.current || saveMutation.isPending) return;
+              submitLockRef.current = true;
+              saveMutation.mutate(form, {
+                onSettled: () => { submitLockRef.current = false; }
+              });
+            }}>
                 {editing ? "Update" : "Save Attendance"}
               </Button>
             </div>
@@ -592,7 +605,7 @@ export default function AttendancePage() {
       )}
 
       {viewOpen && viewing && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#08142D]/45 p-4 backdrop-blur-sm">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm">
           <div className="w-full max-w-lg rounded-[18px] border border-[#E2E8F0] bg-white p-6 shadow-2xl">
             <h2 className="font-display text-xl font-semibold">Attendance Details</h2>
             <div className="mt-4 space-y-2 text-sm">

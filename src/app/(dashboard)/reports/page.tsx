@@ -22,7 +22,16 @@ import { exportToCsv, exportToExcel } from "@/lib/export";
 import { Button } from "@/components/ui/button";
 import { Download, FileSpreadsheet } from "lucide-react";
 
-const COLORS = ["#D4AF37", "#3B82F6", "#22C55E", "#EF4444", "#A855F7"];
+const COLORS = ["#2563EB", "#22C55E", "#F59E0B", "#EF4444", "#8B5CF6"];
+
+const tooltipStyle = {
+  background: "#FFFFFF",
+  border: "1px solid #E2E8F0",
+  borderRadius: 12,
+  fontSize: 12,
+  color: "#0F172A",
+  boxShadow: "0 4px 16px rgba(0,0,0,0.08)"
+};
 
 export default function ReportsPage() {
   const { data, isLoading } = useQuery({
@@ -31,7 +40,7 @@ export default function ReportsPage() {
   });
 
   if (isLoading || !data) {
-    return <div className="h-64 animate-pulse rounded-[18px] bg-[#F1F5F9]" />;
+    return <div className="h-64 animate-pulse rounded-[16px] bg-[#F1F5F9]" />;
   }
 
   const projectPie = [
@@ -49,11 +58,11 @@ export default function ReportsPage() {
   }));
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-5 animate-fade-in">
       <div className="flex flex-wrap items-end justify-between gap-4">
         <div>
-          <h1 className="font-display text-3xl font-bold brand-gradient-text">Reports</h1>
-          <p className="mt-1 text-sm text-[#64748B]">Live aggregates from MongoDB</p>
+          <h1 className="text-xl font-semibold text-[#0F172A]">Reports</h1>
+          <p className="text-sm text-[#64748B]">Live aggregates from database</p>
         </div>
         <div className="flex gap-2">
           <Button variant="secondary" size="sm" onClick={() => exportToCsv("lexcore-report", exportRows)}>
@@ -70,66 +79,78 @@ export default function ReportsPage() {
           ["Revenue", formatCurrency(data.financials.totalRevenue)],
           ["Profit", formatCurrency(data.financials.totalProfit)],
           ["Expenses", formatCurrency(data.financials.totalExpenses)],
-          ["Customers", data.customers.total]
+          ["Customers", String(data.customers.total)]
         ].map(([label, value]) => (
-          <div key={String(label)} className="glass-card premium-shadow p-5">
-            <p className="text-xs uppercase tracking-wider text-[#64748B]">{label}</p>
-            <p className="mt-2 font-display text-2xl font-bold">{value}</p>
+          <div key={String(label)} className="rounded-[16px] border border-[#E2E8F0] bg-white p-5 premium-shadow">
+            <p className="text-xs font-medium uppercase tracking-wider text-[#64748B]">{label}</p>
+            <p className="mt-2 text-2xl font-bold text-[#0F172A]">{value}</p>
           </div>
         ))}
       </div>
 
-      <div className="grid gap-6 lg:grid-cols-2">
-        <Card className="glass-card premium-shadow border-[#E2E8F0]">
+      <div className="grid gap-5 lg:grid-cols-2">
+        <Card>
           <CardHeader>
-            <CardTitle className="font-display">6-Month Revenue</CardTitle>
+            <CardTitle>6-Month Revenue</CardTitle>
           </CardHeader>
           <CardContent>
-            <ResponsiveContainer width="100%" height={280}>
-              <AreaChart data={data.chartData}>
-                <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" />
-                <XAxis dataKey="month" stroke="#94A3B8" fontSize={12} />
-                <YAxis stroke="#94A3B8" fontSize={12} />
-                <Tooltip contentStyle={{ background: "#1E293B", borderRadius: 12 }} />
-                <Area type="monotone" dataKey="revenue" stroke="#D4AF37" fill="#D4AF37" fillOpacity={0.2} />
-              </AreaChart>
-            </ResponsiveContainer>
+            <div className="h-[280px]">
+              <ResponsiveContainer width="100%" height="100%">
+                <AreaChart data={data.chartData}>
+                  <defs>
+                    <linearGradient id="revFillR" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor="#2563EB" stopOpacity={0.3} />
+                      <stop offset="95%" stopColor="#2563EB" stopOpacity={0} />
+                    </linearGradient>
+                  </defs>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#F1F5F9" vertical={false} />
+                  <XAxis dataKey="month" stroke="#94A3B8" fontSize={12} tickLine={false} axisLine={false} />
+                  <YAxis stroke="#94A3B8" fontSize={12} tickLine={false} axisLine={false} />
+                  <Tooltip contentStyle={tooltipStyle} />
+                  <Area type="monotone" dataKey="revenue" stroke="#2563EB" fill="url(#revFillR)" strokeWidth={2.5} />
+                </AreaChart>
+              </ResponsiveContainer>
+            </div>
           </CardContent>
         </Card>
 
-        <Card className="glass-card premium-shadow border-[#E2E8F0]">
+        <Card>
           <CardHeader>
-            <CardTitle className="font-display">Project Status Mix</CardTitle>
+            <CardTitle>Project Status Mix</CardTitle>
           </CardHeader>
           <CardContent className="flex items-center justify-center">
-            <ResponsiveContainer width="100%" height={280}>
-              <PieChart>
-                <Pie data={projectPie} dataKey="value" nameKey="name" innerRadius={60} outerRadius={100}>
-                  {projectPie.map((_, i) => (
-                    <Cell key={i} fill={COLORS[i % COLORS.length]} />
-                  ))}
-                </Pie>
-                <Tooltip contentStyle={{ background: "#1E293B", borderRadius: 12 }} />
-              </PieChart>
-            </ResponsiveContainer>
+            <div className="h-[280px] w-full">
+              <ResponsiveContainer width="100%" height="100%">
+                <PieChart>
+                  <Pie data={projectPie} dataKey="value" nameKey="name" innerRadius={60} outerRadius={100}>
+                    {projectPie.map((_, i) => (
+                      <Cell key={i} fill={COLORS[i % COLORS.length]} />
+                    ))}
+                  </Pie>
+                  <Tooltip contentStyle={tooltipStyle} />
+                </PieChart>
+              </ResponsiveContainer>
+            </div>
           </CardContent>
         </Card>
 
-        <Card className="glass-card premium-shadow border-[#E2E8F0] lg:col-span-2">
+        <Card className="lg:col-span-2">
           <CardHeader>
-            <CardTitle className="font-display">Profit & Expenses</CardTitle>
+            <CardTitle>Profit & Expenses</CardTitle>
           </CardHeader>
           <CardContent>
-            <ResponsiveContainer width="100%" height={300}>
-              <BarChart data={data.chartData}>
-                <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" />
-                <XAxis dataKey="month" stroke="#94A3B8" fontSize={12} />
-                <YAxis stroke="#94A3B8" fontSize={12} />
-                <Tooltip contentStyle={{ background: "#1E293B", borderRadius: 12 }} />
-                <Bar dataKey="expenses" fill="#EF4444" radius={[6, 6, 0, 0]} />
-                <Bar dataKey="profit" fill="#22C55E" radius={[6, 6, 0, 0]} />
-              </BarChart>
-            </ResponsiveContainer>
+            <div className="h-[300px]">
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={data.chartData}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#F1F5F9" vertical={false} />
+                  <XAxis dataKey="month" stroke="#94A3B8" fontSize={12} tickLine={false} axisLine={false} />
+                  <YAxis stroke="#94A3B8" fontSize={12} tickLine={false} axisLine={false} />
+                  <Tooltip contentStyle={tooltipStyle} />
+                  <Bar dataKey="expenses" fill="#EF4444" radius={[6, 6, 0, 0]} />
+                  <Bar dataKey="profit" fill="#22C55E" radius={[6, 6, 0, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
           </CardContent>
         </Card>
       </div>

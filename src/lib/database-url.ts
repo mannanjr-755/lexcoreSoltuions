@@ -133,6 +133,6 @@ export function getSuperAdminConfig() {
   return {
     email: (process.env.SUPER_ADMIN_EMAIL ?? "admin@lexcore.com").toLowerCase().trim(),
     password: process.env.SUPER_ADMIN_PASSWORD ?? "Lexcore@2026!",
-    name: process.env.SUPER_ADMIN_NAME ?? "Super Admin"
+    name: process.env.SUPER_ADMIN_NAME ?? "Admin"
   };
 }

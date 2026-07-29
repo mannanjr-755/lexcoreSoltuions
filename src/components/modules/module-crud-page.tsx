@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useMemo, useState } from "react";
+import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { motion } from "framer-motion";
 import {
@@ -13,8 +13,7 @@ import {
   Download,
   FileSpreadsheet,
   RefreshCw,
-  AlertCircle,
-  Database
+  AlertCircle
 } from "lucide-react";
 import { isAxiosError } from "axios";
 import api from "@/lib/axios";
@@ -98,6 +97,7 @@ export function ModuleCrudPage({
 }: ModuleCrudProps) {
   const toast = useToast();
   const queryClient = useQueryClient();
+  const [searchInput, setSearchInput] = useState("");
   const [query, setQuery] = useState("");
   const [status, setStatus] = useState("");
   const [page, setPage] = useState(1);
@@ -113,6 +113,15 @@ export function ModuleCrudPage({
   const [visibleCols, setVisibleCols] = useState<Record<string, boolean>>(
     Object.fromEntries(columns.map((c) => [c.key, true]))
   );
+  const submitLockRef = useRef(false);
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setQuery(searchInput);
+      setPage(1);
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [searchInput]);
 
   const { data, isLoading, isFetching, refetch } = useQuery({
     queryKey: [queryKey, query, status, page],
@@ -127,16 +136,19 @@ export function ModuleCrudPage({
   const rows: Record<string, unknown>[] = useMemo(() => data?.data ?? [], [data?.data]);
   const total = data?.total ?? 0;
   const totalPages = Math.max(1, Math.ceil(total / 10));
-  const activeCount = rows.filter((r) => String(r.status ?? "").includes("active") || r.status === "present").length;
+  const activeCount = useMemo(
+    () => rows.filter((r) => r.status === "active" || r.status === "present").length,
+    [rows]
+  );
 
-  const invalidate = async () => {
+  const invalidate = useCallback(async () => {
     await Promise.all([
       queryClient.invalidateQueries({ queryKey: [queryKey] }),
       queryClient.invalidateQueries({ queryKey: ["dashboard-stats"] }),
       queryClient.refetchQueries({ queryKey: [queryKey], type: "active" }),
       queryClient.refetchQueries({ queryKey: ["dashboard-stats"], type: "active" })
     ]);
-  };
+  }, [queryClient, queryKey]);
 
   const validateForm = (values: Record<string, unknown>) => {
     const errors: Record<string, string> = {};
@@ -196,11 +208,16 @@ export function ModuleCrudPage({
   const handleSubmit = (e: FormEvent) => {
     e.preventDefault();
     e.stopPropagation();
+    if (submitLockRef.current || saveMutation.isPending) return;
+    submitLockRef.current = true;
     if (!validateForm(form)) {
+      submitLockRef.current = false;
       toast.error("Please fill all required fields");
       return;
     }
-    saveMutation.mutate(form);
+    saveMutation.mutate(form, {
+      onSettled: () => { submitLockRef.current = false; }
+    });
   };
 
   const deleteMutation = useMutation({
@@ -258,52 +275,49 @@ export function ModuleCrudPage({
   const activeColumns = columns.filter((c) => visibleCols[c.key]);
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-5 animate-fade-in">
       <motion.div
         initial={{ opacity: 0, y: 8 }}
         animate={{ opacity: 1, y: 0 }}
         className="flex flex-wrap items-end justify-between gap-4"
       >
         <div>
-          <h1 className="font-display text-3xl font-bold brand-gradient-text">{title}</h1>
-          <p className="mt-1 text-sm text-[#64748B]">{subtitle}</p>
+          <h1 className="text-xl font-semibold text-[#0F172A]">{title}</h1>
+          <p className="mt-0.5 text-sm text-[#64748B]">{subtitle}</p>
         </div>
-        <Button type="button" onClick={openCreate}>
+        <Button size="sm" onClick={openCreate}>
           <Plus className="size-4" /> Add New
         </Button>
       </motion.div>
 
       <div className="grid gap-3 sm:grid-cols-3">
-        <div className="glass-card premium-shadow p-4">
-          <p className="text-xs font-medium uppercase tracking-wide text-[#64748B]">Total records</p>
-          <p className="mt-1 font-mono-num text-2xl font-bold text-[#0F172A]">{total}</p>
+        <div className="rounded-[12px] border border-[#E2E8F0] bg-white p-4 premium-shadow">
+          <p className="text-xs font-medium uppercase tracking-wider text-[#64748B]">Total records</p>
+          <p className="mt-1 text-2xl font-bold text-[#0F172A]">{total}</p>
         </div>
-        <div className="glass-card premium-shadow p-4">
-          <p className="text-xs font-medium uppercase tracking-wide text-[#64748B]">On this page</p>
-          <p className="mt-1 font-mono-num text-2xl font-bold text-[#0F172A]">{rows.length}</p>
+        <div className="rounded-[12px] border border-[#E2E8F0] bg-white p-4 premium-shadow">
+          <p className="text-xs font-medium uppercase tracking-wider text-[#64748B]">On this page</p>
+          <p className="mt-1 text-2xl font-bold text-[#0F172A]">{rows.length}</p>
         </div>
-        <div className="glass-card premium-shadow p-4">
-          <p className="text-xs font-medium uppercase tracking-wide text-[#64748B]">Active / tagged</p>
-          <p className="mt-1 font-mono-num text-2xl font-bold text-[#C9A227]">{activeCount}</p>
+        <div className="rounded-[12px] border border-[#E2E8F0] bg-white p-4 premium-shadow">
+          <p className="text-xs font-medium uppercase tracking-wider text-[#64748B]">Active</p>
+          <p className="mt-1 text-2xl font-bold text-[#2563EB]">{activeCount}</p>
         </div>
       </div>
 
-      <div className="glass-card premium-shadow flex flex-wrap items-center gap-3 p-4">
-        <div className="relative min-w-[220px] flex-1">
+      <div className="flex flex-wrap items-center gap-3 rounded-[12px] border border-[#E2E8F0] bg-white p-4 premium-shadow">
+        <div className="relative min-w-[200px] flex-1">
           <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-[#64748B]" />
           <Input
-            className="pl-10"
+            className="pl-9"
             placeholder={`Search ${title.toLowerCase()}...`}
-            value={query}
-            onChange={(e) => {
-              setQuery(e.target.value);
-              setPage(1);
-            }}
+            value={searchInput}
+            onChange={(e) => setSearchInput(e.target.value)}
           />
         </div>
         {statusOptions.length > 0 && (
           <select
-            className="h-11 rounded-[12px] border border-[#E2E8F0] bg-white px-3 text-sm"
+            className="h-10 rounded-[10px] border border-[#E2E8F0] bg-white px-3 text-sm"
             value={status}
             onChange={(e) => {
               setStatus(e.target.value);
@@ -318,11 +332,10 @@ export function ModuleCrudPage({
             ))}
           </select>
         )}
-        <Button type="button" variant="secondary" size="sm" onClick={() => void refetch()} loading={isFetching}>
+        <Button variant="secondary" size="sm" onClick={() => void refetch()} loading={isFetching}>
           <RefreshCw className="size-4" /> Refresh
         </Button>
         <Button
-          type="button"
           variant="secondary"
           size="sm"
           onClick={() => exportToCsv(exportName, exportRows)}
@@ -331,7 +344,6 @@ export function ModuleCrudPage({
           <Download className="size-4" /> CSV
         </Button>
         <Button
-          type="button"
           variant="secondary"
           size="sm"
           onClick={() => exportToExcel(exportName, exportRows)}
@@ -343,7 +355,7 @@ export function ModuleCrudPage({
           <>
             {statusOptions[0] && (
               <select
-                className="h-9 rounded-[10px] border border-[#E2E8F0] bg-white px-2 text-xs"
+                className="h-9 rounded-[8px] border border-[#E2E8F0] bg-white px-2 text-xs"
                 defaultValue=""
                 onChange={(e) => {
                   if (e.target.value) bulkStatusMutation.mutate(e.target.value);
@@ -358,7 +370,7 @@ export function ModuleCrudPage({
                 ))}
               </select>
             )}
-            <Button type="button" variant="danger" size="sm" onClick={() => setBulkConfirm(true)}>
+            <Button variant="danger" size="sm" onClick={() => setBulkConfirm(true)}>
               <Trash2 className="size-4" /> Delete ({selected.length})
             </Button>
           </>
@@ -372,13 +384,14 @@ export function ModuleCrudPage({
               type="checkbox"
               checked={visibleCols[col.key]}
               onChange={() => setVisibleCols((p) => ({ ...p, [col.key]: !p[col.key] }))}
+              className="rounded"
             />
             {col.label}
           </label>
         ))}
       </div>
 
-      <div className="glass-card premium-shadow overflow-hidden">
+      <div className="rounded-[16px] border border-[#E2E8F0] bg-white overflow-hidden premium-shadow">
         {isLoading ? (
           <TableSkeleton />
         ) : rows.length === 0 ? (
@@ -392,23 +405,24 @@ export function ModuleCrudPage({
           <>
             <div className="overflow-x-auto">
               <table className="w-full min-w-[720px] text-left text-sm">
-                <thead className="border-b border-[#E2E8F0] bg-[#F8FAFC]">
-                  <tr>
-                    <th className="px-4 py-3">
+                <thead>
+                  <tr className="border-b border-[#E2E8F0] bg-[#F8FAFC]">
+                    <th className="px-4 py-3 w-10">
                       <input
                         type="checkbox"
                         checked={selected.length > 0 && selected.length === rows.length}
                         onChange={() =>
                           setSelected(selected.length === rows.length ? [] : rows.map((r) => rowId(r)))
                         }
+                        className="rounded"
                       />
                     </th>
                     {activeColumns.map((col) => (
-                      <th key={col.key} className="px-4 py-3 font-medium text-[#64748B]">
+                      <th key={col.key} className="px-4 py-3 font-medium text-[#64748B] text-xs uppercase tracking-wider">
                         {col.label}
                       </th>
                     ))}
-                    <th className="px-4 py-3 font-medium text-[#64748B]">Actions</th>
+                    <th className="px-4 py-3 font-medium text-[#64748B] text-xs uppercase tracking-wider text-right">Actions</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -417,39 +431,29 @@ export function ModuleCrudPage({
                     return (
                       <tr key={id} className="border-b border-[#E2E8F0] transition hover:bg-[#F8FAFC]">
                         <td className="px-4 py-3">
-                          <input type="checkbox" checked={selected.includes(id)} onChange={() => toggleSelect(id)} />
+                          <input type="checkbox" checked={selected.includes(id)} onChange={() => toggleSelect(id)} className="rounded" />
                         </td>
                         {activeColumns.map((col) => (
-                          <td key={col.key} className="px-4 py-3">
+                          <td key={col.key} className="px-4 py-3 text-[#0F172A]">
                             {col.render ? col.render(row) : String(getNested(row, col.key) ?? "—")}
                           </td>
                         ))}
-                        <td className="px-4 py-3">
-                          <div className="flex gap-1">
-                            <Button
-                              type="button"
-                              size="icon"
-                              variant="ghost"
-                              onClick={() => {
-                                setViewing(row);
-                                setViewOpen(true);
-                              }}
-                            >
+                        <td className="px-4 py-3 text-right">
+                          <div className="flex justify-end gap-1">
+                            <Button type="button" size="icon" variant="ghost" onClick={() => {
+                              setViewing(row);
+                              setViewOpen(true);
+                            }}>
                               <Eye className="size-4" />
                             </Button>
                             <Button type="button" size="icon" variant="ghost" onClick={() => openEdit(row)}>
                               <Pencil className="size-4" />
                             </Button>
-                            <Button
-                              type="button"
-                              size="icon"
-                              variant="ghost"
-                              onClick={() => duplicateMutation.mutate(id)}
-                            >
+                            <Button type="button" size="icon" variant="ghost" onClick={() => duplicateMutation.mutate(id)}>
                               <Copy className="size-4" />
                             </Button>
                             <Button type="button" size="icon" variant="ghost" onClick={() => setDeleteId(id)}>
-                              <Trash2 className="size-4 text-red-500" />
+                              <Trash2 className="size-4 text-[#EF4444]" />
                             </Button>
                           </div>
                         </td>
@@ -461,14 +465,13 @@ export function ModuleCrudPage({
             </div>
             <div className="flex items-center justify-between border-t border-[#E2E8F0] px-4 py-3 text-sm text-[#64748B]">
               <span>
-                Page {page} of {totalPages} · {total} total
+                Page {page} of {totalPages} &middot; {total} total
               </span>
               <div className="flex gap-2">
-                <Button type="button" variant="secondary" size="sm" disabled={page <= 1} onClick={() => setPage((p) => p - 1)}>
+                <Button variant="secondary" size="sm" disabled={page <= 1} onClick={() => setPage((p) => p - 1)}>
                   Previous
                 </Button>
                 <Button
-                  type="button"
                   variant="secondary"
                   size="sm"
                   disabled={page >= totalPages}
@@ -483,24 +486,19 @@ export function ModuleCrudPage({
       </div>
 
       {modalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#08142D]/55 p-4 backdrop-blur-sm">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm">
           <motion.div
             initial={{ opacity: 0, scale: 0.96, y: 8 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}
-            className="glass-card premium-shadow max-h-[90vh] w-full max-w-2xl overflow-y-auto p-6"
+            className="w-full max-w-2xl max-h-[90vh] overflow-y-auto rounded-[16px] border border-[#E2E8F0] bg-white p-6 premium-shadow-lg"
           >
-            <div className="mb-4 flex items-start gap-3">
-              <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-[#08142D] to-[#1E3A8A] text-[#E6C86E]">
-                <Database className="size-5" />
-              </div>
-              <div>
-                <h2 className="font-display text-xl font-semibold text-[#0F172A]">
-                  {editing ? "Update" : "Create"} {title}
-                </h2>
-                <p className="text-sm text-[#64748B]">
-                  {editing ? "Edit fields and save your changes." : "Fill required fields, then click Create."}
-                </p>
-              </div>
+            <div className="mb-6">
+              <h2 className="text-lg font-semibold text-[#0F172A]">
+                {editing ? "Update" : "Create"} {title}
+              </h2>
+              <p className="text-sm text-[#64748B]">
+                {editing ? "Edit fields and save your changes." : "Fill required fields, then click Create."}
+              </p>
             </div>
 
             <form onSubmit={handleSubmit} className="space-y-4" noValidate>
@@ -509,13 +507,13 @@ export function ModuleCrudPage({
                   <div key={field.name} className={cn(field.type === "textarea" && "sm:col-span-2")}>
                     <Label>
                       {field.label}
-                      {field.required ? <span className="text-red-500"> *</span> : null}
+                      {field.required ? <span className="text-[#EF4444]"> *</span> : null}
                     </Label>
                     {field.type === "select" ? (
                       <select
                         className={cn(
-                          "mt-1.5 h-11 w-full rounded-[14px] border bg-white px-3 text-sm",
-                          fieldErrors[field.name] ? "border-red-300" : "border-[#E2E8F0]"
+                          "mt-1.5 h-10 w-full rounded-[10px] border bg-white px-3 text-sm",
+                          fieldErrors[field.name] ? "border-[#EF4444]" : "border-[#E2E8F0]"
                         )}
                         value={String(form[field.name] ?? "")}
                         onChange={(e) => {
@@ -533,8 +531,8 @@ export function ModuleCrudPage({
                     ) : field.type === "textarea" ? (
                       <textarea
                         className={cn(
-                          "mt-1.5 min-h-24 w-full rounded-[14px] border bg-white px-3 py-2 text-sm",
-                          fieldErrors[field.name] ? "border-red-300" : "border-[#E2E8F0]"
+                          "mt-1.5 min-h-24 w-full rounded-[10px] border bg-white px-3 py-2 text-sm",
+                          fieldErrors[field.name] ? "border-[#EF4444]" : "border-[#E2E8F0]"
                         )}
                         value={String(form[field.name] ?? "")}
                         placeholder={field.placeholder}
@@ -545,7 +543,7 @@ export function ModuleCrudPage({
                       />
                     ) : (
                       <Input
-                        className={cn("mt-1.5", fieldErrors[field.name] && "border-red-300")}
+                        className={cn("mt-1.5", fieldErrors[field.name] && "border-[#EF4444]")}
                         type={field.type ?? "text"}
                         placeholder={field.placeholder}
                         value={String(form[field.name] ?? "")}
@@ -559,7 +557,7 @@ export function ModuleCrudPage({
                       />
                     )}
                     {fieldErrors[field.name] ? (
-                      <p className="mt-1 flex items-center gap-1 text-xs text-red-500">
+                      <p className="mt-1 flex items-center gap-1 text-xs text-[#EF4444]">
                         <AlertCircle className="size-3" />
                         {fieldErrors[field.name]}
                       </p>
@@ -568,15 +566,11 @@ export function ModuleCrudPage({
                 ))}
               </div>
 
-              <div className="flex justify-end gap-2 pt-2">
-                <Button
-                  type="button"
-                  variant="secondary"
-                  onClick={() => {
-                    setModalOpen(false);
-                    setFieldErrors({});
-                  }}
-                >
+              <div className="flex justify-end gap-2 pt-4 border-t border-[#E2E8F0]">
+                <Button type="button" variant="secondary" onClick={() => {
+                  setModalOpen(false);
+                  setFieldErrors({});
+                }}>
                   Cancel
                 </Button>
                 <Button type="submit" loading={saveMutation.isPending}>
@@ -589,21 +583,21 @@ export function ModuleCrudPage({
       )}
 
       {viewOpen && viewing && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#08142D]/55 p-4 backdrop-blur-sm">
-          <div className="glass-card premium-shadow w-full max-w-lg p-6">
-            <h2 className="font-display text-xl font-semibold">View {title}</h2>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm">
+          <div className="w-full max-w-lg rounded-[16px] border border-[#E2E8F0] bg-white p-6 premium-shadow-lg">
+            <h2 className="text-lg font-semibold text-[#0F172A]">View {title}</h2>
             <div className="mt-4 space-y-2 text-sm">
               {columns.map((col) => (
                 <div key={col.key} className="flex justify-between gap-4 border-b border-[#E2E8F0] py-2">
                   <span className="text-[#64748B]">{col.label}</span>
-                  <span className="text-right font-medium">
+                  <span className="text-right font-medium text-[#0F172A]">
                     {col.render ? col.render(viewing) : String(getNested(viewing, col.key) ?? "—")}
                   </span>
                 </div>
               ))}
             </div>
-            <div className="mt-4 flex justify-end">
-              <Button type="button" variant="secondary" onClick={() => setViewOpen(false)}>
+            <div className="mt-6 flex justify-end">
+              <Button variant="secondary" onClick={() => setViewOpen(false)}>
                 Close
               </Button>
             </div>

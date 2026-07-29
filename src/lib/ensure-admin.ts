@@ -15,7 +15,7 @@ function isMissingUsersTable(error: unknown) {
 }
 
 /**
- * Ensures exactly one Super Admin exists.
+ * Ensures exactly one admin exists.
  * Creates from SUPER_ADMIN_* env vars (defaults: admin@lexcore.com / Lexcore@2026!).
  */
 export async function ensureSuperAdmin() {
@@ -44,7 +44,7 @@ export async function ensureSuperAdmin() {
       passwordHash,
       role: "super_admin",
       company: "Lexcore Solutions",
-      designation: "Super Admin",
+      designation: "Administrator",
       isActive: true,
       failedLoginAttempts: 0,
       lockedUntil: null
@@ -52,6 +52,6 @@ export async function ensureSuperAdmin() {
   });
 
   await getSystemSettings();
-  logger.info("Super Admin auto-created", { email: admin.email });
+  logger.info("Admin auto-created", { email: admin.email });
   return admin;
 }

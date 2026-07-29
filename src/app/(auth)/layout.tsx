@@ -2,8 +2,8 @@ export default function AuthLayout({ children }: { children: React.ReactNode }) 
   return (
     <div className="relative flex min-h-screen items-center justify-center overflow-hidden bg-[#F8FAFC] p-4">
       <div className="pointer-events-none absolute inset-0">
-        <div className="absolute -left-32 -top-32 h-[28rem] w-[28rem] rounded-full bg-[#D4AF37]/15 blur-3xl" />
-        <div className="absolute -bottom-32 -right-32 h-[28rem] w-[28rem] rounded-full bg-[#08142D]/08 blur-3xl" />
+        <div className="absolute -left-32 -top-32 h-[28rem] w-[28rem] rounded-full bg-[#2563EB]/10 blur-3xl" />
+        <div className="absolute -bottom-32 -right-32 h-[28rem] w-[28rem] rounded-full bg-[#1D4ED8]/08 blur-3xl" />
         <div
           className="absolute inset-0 opacity-40"
           style={{

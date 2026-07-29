@@ -125,14 +125,14 @@ async function main() {
 
   if (isNetlifyBuild) {
     console.log(
-      "[lexcore] Netlify build — skipping seed step. Super Admin is created automatically on first login."
+      "[lexcore] Netlify build — skipping seed step. Admin is created automatically on first login."
     );
     return;
   }
 
-  const seed = run("node", ["scripts/seed-admin.mjs"], "Seeding Super Admin + staff + settings");
+  const seed = run("node", ["scripts/seed-admin.mjs"], "Seeding admin + staff + settings");
   if ((seed.status ?? 1) !== 0) {
-    console.error("[lexcore] Seed failed — tables exist but Super Admin was not created");
+    console.error("[lexcore] Seed failed — tables exist but admin was not created");
     process.exit(seed.status ?? 1);
   }
 

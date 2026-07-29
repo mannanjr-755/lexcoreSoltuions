@@ -1,20 +1,20 @@
 # Lexcore Solutions ERP + CRM
 
-Premium enterprise ERP/CRM with Super Admin authentication, live MongoDB dashboard, CRM, profile, settings, activity logs, and notifications.
+Premium enterprise ERP/CRM with admin authentication, live PostgreSQL dashboard, CRM, profile, settings, activity logs, and team messaging.
 
 ## Quick Start
 
-1. Ensure `.env.local` exists with your MongoDB Atlas URI, JWT secrets, Super Admin credentials, and SMTP settings (see `.env.example`).
+1. Ensure `.env.local` exists with your Neon PostgreSQL URI, JWT secrets, admin credentials, and SMTP settings (see `.env.example`).
 2. Install dependencies: `npm install`
 3. Start: `npm run dev`
-4. Seed Super Admin once: `POST /api/setup/seed` (uses `SUPER_ADMIN_*` from `.env.local`)
+4. Seed admin once: `POST /api/setup/seed` (uses `SUPER_ADMIN_*` from `.env.local`)
 5. Login at `/login`
 
 Health check: `GET /api/health`
 
 ## Implemented Features
 
-### Authentication (Super Admin Only)
+### Authentication (Admin Only)
 - Login with JWT + HTTP-only cookies
 - Logout
 - Change password (backend validated)
@@ -27,7 +27,7 @@ Health check: `GET /api/health`
 - No public registration
 
 ### Admin Dashboard
-- Live MongoDB aggregations for customers, projects, revenue, expenses, profit
+- Live PostgreSQL aggregations for customers, projects, revenue, expenses, profit
 - Revenue analytics charts (Recharts)
 - Monthly reports
 - Recent activities
@@ -43,13 +43,18 @@ Health check: `GET /api/health`
 ### System Settings
 - Company profile, SMTP, currency, timezone, language, theme
 - Security settings (session timeout, lockout rules)
-- Stored in MongoDB
 
 ### CRM Customers
 - List with live financial rollups
 - Unique Customer ID generation
 - Payment calculations
 - Activity logging + notifications on create
+
+### Team Messaging
+- Lexcore Solutions team workspace chat
+- Group conversation with all team members
+- Emoji picker, file sharing, reply, delete, search
+- Fully responsive modern UI
 
 ### Security
 - bcrypt password hashing
@@ -60,13 +65,10 @@ Health check: `GET /api/health`
 - Activity audit logs
 
 ### UI
-- Premium dark + gold theme (#09090B / #F4B400)
-- Space Grotesk + Inter fonts
+- Premium SaaS design with Inter font
 - Framer Motion animations
-- Glassmorphism cards
 - Responsive layout
 - Global search
-- Notification bell
 
 ## Scripts
 
@@ -75,20 +77,20 @@ Health check: `GET /api/health`
 - `npm run start` - Production server
 - `npm run typecheck` - TypeScript check
 - `npm run lint` - ESLint
-- `npm run seed` - Seed Super Admin (server must be running)
+- `npm run seed` - Seed admin (server must be running)
 
-## Deploy (Vercel + MongoDB Atlas)
+## Deploy (Netlify + Neon PostgreSQL)
 
-1. Set all env vars from `.env.example` in Vercel dashboard
-2. Deploy: `vercel --prod`
-3. Run seed once: `POST https://your-app.vercel.app/api/setup/seed`
+1. Set all env vars from `.env.example` in Netlify dashboard
+2. Deploy via Netlify
+3. Run seed once: `POST https://your-app.netlify.app/api/setup/seed`
 4. Configure SMTP for password reset emails
 
 ## API Routes
 
 | Route | Method | Description |
 |-------|--------|-------------|
-| `/api/auth/login` | POST | Super Admin login |
+| `/api/auth/login` | POST | Admin login |
 | `/api/auth/logout` | POST | Logout |
 | `/api/auth/me` | GET | Current user |
 | `/api/auth/change-password` | POST | Change password |
@@ -98,8 +100,7 @@ Health check: `GET /api/health`
 | `/api/dashboard/stats` | GET | Dashboard data |
 | `/api/profile` | GET/PATCH | Profile |
 | `/api/settings` | GET/PATCH | System settings |
-| `/api/notifications` | GET/PATCH/DELETE | Notifications |
 | `/api/activity-logs` | GET | Activity logs |
 | `/api/search` | GET | Global search |
 | `/api/crm/customers` | GET/POST | CRM customers |
-| `/api/setup/seed` | POST | One-time Super Admin seed |
+| `/api/setup/seed` | POST | One-time admin seed |

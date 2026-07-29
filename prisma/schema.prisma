@@ -146,7 +146,7 @@ model User {
   phone                String?
   profilePhoto         String?
   company              String    @default("Lexcore Solutions")
-  designation          String    @default("Super Admin")
+  designation          String    @default("Administrator")
   address              String?
   isActive             Boolean   @default(true)
   failedLoginAttempts  Int       @default(0)
@@ -183,8 +183,6 @@ model Customer {
   name            String
   phone           String
   whatsapp        String?
-  email           String
-  company         String?
   address         String?
   projectName     String
   projectType     String
@@ -211,7 +209,8 @@ model Customer {
   @@index([status, projectDeadline])
   @@index([assignedManager, status])
   @@index([name])
-  @@index([email])
+  @@index([phone])
+  @@index([projectName])
   @@map("customers")
 }
 
@@ -242,6 +241,7 @@ model Employee {
   @@index([department])
   @@index([status])
   @@index([isArchived])
+  @@index([fullName])
   @@map("employees")
 }
 
@@ -296,6 +296,8 @@ model Task {
   @@index([projectId])
   @@index([assigneeId])
   @@index([isArchived])
+  @@index([dueDate, status])
+  @@index([dueDate, isArchived])
   @@map("tasks")
 }
 
@@ -322,6 +324,8 @@ model Payment {
   @@index([status])
   @@index([customerId])
   @@index([isArchived])
+  @@index([paidAt, status])
+  @@index([paidAt, isArchived])
   @@map("payments")
 }
 
@@ -340,6 +344,7 @@ model Expense {
 
   @@index([date, category])
   @@index([isArchived])
+  @@index([date, isArchived])
   @@map("expenses")
 }
 

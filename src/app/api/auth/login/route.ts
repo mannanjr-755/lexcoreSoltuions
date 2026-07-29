@@ -77,10 +77,10 @@ export async function POST(req: Request) {
         userAgent,
         browser,
         success: false,
-        failureReason: "Only Super Admin can login"
+        failureReason: "Only administrators can login"
         }
       });
-      return NextResponse.json({ message: "Access denied. Only Super Admin can login." }, { status: 403 });
+      return NextResponse.json({ message: "Access denied. Only administrators can login." }, { status: 403 });
     }
 
     if (!user.isActive) {
@@ -150,7 +150,7 @@ export async function POST(req: Request) {
       userId: user.id,
       userName: user.fullName,
       action: "login",
-      description: "Super Admin logged in",
+      description: "Admin logged in",
       ipAddress,
       userAgent,
       browser
@@ -182,7 +182,7 @@ export async function POST(req: Request) {
 
     setAuthCookies(response, { accessToken, refreshToken }, rememberMe);
     response.headers.set("Cache-Control", "no-store");
-    logger.info("Super Admin login successful", { email: user.email });
+    logger.info("Admin login successful", { email: user.email });
     return response;
   } catch (error) {
     return handleApiError(error);

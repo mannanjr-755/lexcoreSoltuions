@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
 import { motion } from "framer-motion";
@@ -9,23 +9,21 @@ import {
   FolderKanban,
   DollarSign,
   TrendingUp,
-  TrendingDown,
   Wallet,
   UserCheck,
-  Bell,
   Clock,
   Plus,
   Receipt,
   CalendarDays,
-  Percent,
   Activity,
   Briefcase,
-  CheckCircle2,
-  PlayCircle,
   ArrowRight,
-  Sparkles,
   ListTodo,
-  FileSpreadsheet
+  FileSpreadsheet,
+  Target,
+  ChevronLeft,
+  ChevronRight,
+  CheckCircle
 } from "lucide-react";
 import {
   AreaChart,
@@ -39,12 +37,10 @@ import {
   Bar,
   PieChart,
   Pie,
-  Cell,
-  RadialBarChart,
-  RadialBar
+  Cell
 } from "recharts";
 import api from "@/lib/axios";
-import { formatCurrency, formatDate, formatDateTime } from "@/lib/utils";
+import { formatDate } from "@/lib/utils";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { PremiumStatCard, StatCardSkeleton } from "@/components/dashboard/premium-stat-card";
@@ -85,19 +81,8 @@ interface DashboardData {
   };
   growth: { revenue: number; expenses: number; profit: number };
   tasks: { today: number };
-  notifications: {
-    unread: number;
-    items: Array<{ _id: string; title: string; message: string; createdAt: string }>;
-  };
   chartData: Array<{ month: string; revenue: number; expenses: number; profit: number }>;
   sparks: { revenue: number[]; expenses: number[]; profit: number[] };
-  recentActivities: Array<{
-    _id: string;
-    action: string;
-    description: string;
-    userName: string;
-    createdAt: string;
-  }>;
   upcomingDeadlines: Array<{
     _id: string;
     name: string;
@@ -130,14 +115,15 @@ interface DashboardData {
   monthlyGrowth: number;
 }
 
-const PIE_COLORS = ["#D4AF37", "#1E3A8A", "#22C55E", "#F59E0B", "#102348"];
+const PIE_COLORS = ["#2563EB", "#22C55E", "#F59E0B", "#EF4444", "#8B5CF6"];
 
 const tooltipStyle = {
   background: "#FFFFFF",
   border: "1px solid #E2E8F0",
-  borderRadius: 14,
+  borderRadius: 12,
   fontSize: 12,
-  color: "#0F172A"
+  color: "#0F172A",
+  boxShadow: "0 4px 16px rgba(0,0,0,0.08)"
 };
 
 export default function DashboardPage() {
@@ -149,29 +135,42 @@ export default function DashboardPage() {
     refetchInterval: 60_000
   });
 
-  const hour = new Date().getHours();
-  const greeting = hour < 12 ? "Good morning" : hour < 18 ? "Good afternoon" : "Good evening";
+  const [monthOffset, setMonthOffset] = useState(0);
+  const today = useMemo(() => new Date(), []);
 
   const calendarDays = useMemo(() => {
-    const base = new Date();
+    const base = new Date(today.getFullYear(), today.getMonth() + monthOffset, 1);
     const year = base.getFullYear();
     const month = base.getMonth();
-    const first = new Date(year, month, 1).getDay();
+    const first = base.getDay();
     const daysInMonth = new Date(year, month + 1, 0).getDate();
-    const cells: Array<{ day: number | null; today?: boolean }> = [];
+    const cells: Array<{ day: number | null; isToday?: boolean }> = [];
     for (let i = 0; i < first; i++) cells.push({ day: null });
     for (let d = 1; d <= daysInMonth; d++) {
-      cells.push({ day: d, today: d === base.getDate() });
+      cells.push({
+        day: d,
+        isToday: monthOffset === 0 && d === today.getDate()
+      });
     }
     return cells;
-  }, []);
+  }, [monthOffset, today]);
+
+  const calendarLabel = useMemo(() => {
+    const d = new Date(today.getFullYear(), today.getMonth() + monthOffset, 1);
+    return d.toLocaleDateString(undefined, { month: "long", year: "numeric" });
+  }, [monthOffset, today]);
 
   if (isLoading) {
     return (
-      <div className="space-y-6">
-        <div className="h-40 animate-pulse rounded-[28px] bg-[#F1F5F9]" />
+      <div className="space-y-5">
+        <div className="h-8 w-48 animate-pulse rounded-lg bg-[#F1F5F9]" />
         <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-          {Array.from({ length: 8 }).map((_, i) => (
+          {Array.from({ length: 4 }).map((_, i) => (
+            <StatCardSkeleton key={i} />
+          ))}
+        </div>
+        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+          {Array.from({ length: 4 }).map((_, i) => (
             <StatCardSkeleton key={i} />
           ))}
         </div>
@@ -181,22 +180,20 @@ export default function DashboardPage() {
 
   if (!data) {
     return (
-      <div className="rounded-[22px] border border-red-500/20 bg-red-500/10 p-6 text-sm text-red-300">
-        Unable to load live dashboard data from MongoDB. Please refresh.
+      <div className="rounded-[16px] border border-red-200 bg-red-50 p-6 text-sm text-red-600">
+        Unable to load dashboard data. Please refresh.
       </div>
     );
   }
 
   const stats = {
     ...data,
-    recentActivities: Array.isArray(data.recentActivities) ? data.recentActivities : [],
     upcomingDeadlines: Array.isArray(data.upcomingDeadlines) ? data.upcomingDeadlines : [],
     latestPayments: Array.isArray(data.latestPayments) ? data.latestPayments : [],
     latestCustomers: Array.isArray(data.latestCustomers) ? data.latestCustomers : [],
     latestProjects: Array.isArray(data.latestProjects) ? data.latestProjects : [],
     chartData: Array.isArray(data.chartData) ? data.chartData : [],
     sparks: data.sparks ?? { revenue: [], expenses: [], profit: [] },
-    notifications: data.notifications ?? { unread: 0, items: [] },
     growth: data.growth ?? { revenue: 0, expenses: 0, profit: 0 },
     tasks: data.tasks ?? { today: 0 },
     employees: data.employees ?? { total: 0, active: 0, managers: 0, attendancePct: 0 },
@@ -219,11 +216,6 @@ export default function DashboardPage() {
     { name: "Cancelled", value: stats.projects.cancelled }
   ].filter((p) => p.value > 0);
 
-  const radialData = [
-    { name: "Completion", value: stats.projects.completionPct, fill: "#D4AF37" },
-    { name: "Attendance", value: stats.attendance.percentage || stats.employees.attendancePct, fill: "#22C55E" }
-  ];
-
   const shortcuts = [
     { label: "Add Customer", href: "/crm/customers", icon: Users },
     { label: "New Project", href: "/projects", icon: FolderKanban },
@@ -235,297 +227,240 @@ export default function DashboardPage() {
   ];
 
   return (
-    <div className="space-y-6">
-      {/* Welcome */}
-      <motion.section
-        initial={{ opacity: 0, y: 12 }}
-        animate={{ opacity: 1, y: 0 }}
-        className="lexcore-banner relative overflow-hidden rounded-[28px] border border-[#102348] p-6 text-white md:p-8"
-      >
-        <div className="pointer-events-none absolute -right-16 -top-16 h-56 w-56 rounded-full bg-[#D4AF37]/20 blur-3xl" />
-        <div className="pointer-events-none absolute bottom-0 left-1/3 h-40 w-40 rounded-full bg-white/5 blur-3xl" />
-        <div className="relative flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
-          <div className="max-w-2xl">
-            <div className="mb-3 inline-flex items-center gap-2 rounded-full border border-[#D4AF37]/30 bg-[#D4AF37]/10 px-3 py-1 text-xs font-medium text-[#E6C86E]">
-              <Sparkles className="size-3.5" /> Lexcore Solutions · Executive Intelligence
-            </div>
-            <h1 className="font-display text-3xl font-bold tracking-tight text-white md:text-4xl">
-              {greeting}, {user?.fullName?.split(" ")[0] ?? "Admin"}
-            </h1>
-            <p className="mt-3 max-w-xl text-sm leading-relaxed text-slate-300 md:text-base">
-              Premium overview for Lexcore — revenue, delivery, people, and pipeline synced live from MongoDB.
-            </p>
-          </div>
-          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-            {[
-              { label: "Revenue", value: formatCurrency(stats.financials.totalRevenue) },
-              { label: "Profit", value: formatCurrency(stats.financials.totalProfit) },
-              { label: "Projects", value: String(stats.projects.total) },
-              { label: "Customers", value: String(stats.customers.total) }
-            ].map((item) => (
-              <div key={item.label} className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 backdrop-blur">
-                <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">{item.label}</p>
-                <p className="mt-1 font-mono-num text-sm font-semibold text-[#E6C86E] md:text-base">{item.value}</p>
-              </div>
-            ))}
-          </div>
+    <div className="space-y-6 animate-fade-in">
+      {/* Header */}
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-xl font-semibold text-[#0F172A]">Now</h1>
+          <p className="text-sm text-[#64748B]">Dashboard overview for {user?.fullName?.split(" ")[0] ?? "Admin"}</p>
         </div>
-      </motion.section>
+        <Button size="sm" onClick={() => router.push("/crm/customers")}>
+          <Plus className="size-4" /> Quick Create
+        </Button>
+      </div>
 
-      {/* Quick actions */}
-      <section className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-7">
-        {shortcuts.map((s, i) => {
-          const Icon = s.icon;
-          return (
-            <motion.button
-              key={s.href}
-              type="button"
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.05 * i }}
-              onClick={() => router.push(s.href)}
-              className="group flex items-center gap-3 rounded-[16px] border border-[#E2E8F0] bg-white px-4 py-3 text-left shadow-sm transition hover:-translate-y-1 hover:border-[#D4AF37]/40 hover:bg-[rgba(212,175,55,0.06)]"
-            >
-              <div className="rounded-xl bg-[rgba(212,175,55,0.12)] p-2 text-[#C9A227] transition group-hover:scale-110">
-                <Icon className="size-4" />
-              </div>
-              <span className="text-sm font-semibold">{s.label}</span>
-            </motion.button>
-          );
-        })}
-      </section>
+      {/* Premium KPIs */}
+      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        <PremiumStatCard label="Total Revenue" description="All-time revenue" value={stats.financials.totalRevenue} icon={DollarSign} growth={stats.growth.revenue} spark={stats.sparks.revenue} href="/finance/invoices" format="currency" tone={0} delay={0} />
+        <PremiumStatCard label="Active Projects" description="Currently in delivery" value={stats.projects.active} icon={FolderKanban} href="/projects" tone={1} delay={0.05} />
+        <PremiumStatCard label="Total Customers" description="CRM accounts" value={stats.customers.total} icon={Users} href="/crm/customers" tone={2} delay={0.1} />
+        <PremiumStatCard label="Net Profit" description="Revenue minus expenses" value={stats.financials.totalProfit} icon={TrendingUp} growth={stats.growth.profit} spark={stats.sparks.profit} href="/reports" format="currency" tone={3} delay={0.15} />
+      </div>
 
-      {/* KPI cards */}
-      <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        <PremiumStatCard label="Active Projects" description="Currently in delivery" value={stats.projects.active} icon={PlayCircle} growth={stats.growth.revenue} spark={stats.sparks.revenue} href="/projects" tone="gold" delay={0} />
-        <PremiumStatCard label="Total Revenue" description="Collected payments" value={stats.financials.totalRevenue} icon={DollarSign} growth={stats.growth.revenue} spark={stats.sparks.revenue} href="/finance/invoices" format="currency" tone="gold" delay={0.04} />
-        <PremiumStatCard label="Total Profit" description="Revenue minus expenses" value={stats.financials.totalProfit} icon={TrendingUp} growth={stats.growth.profit} spark={stats.sparks.profit} href="/reports" format="currency" tone="green" delay={0.08} />
-        <PremiumStatCard label="Pending Payments" description="Outstanding balances" value={stats.financials.pendingPayments} icon={Wallet} href="/finance/invoices" format="currency" tone="amber" delay={0.12} />
-        <PremiumStatCard label="Customers" description="CRM accounts" value={stats.customers.total} icon={Users} href="/crm/customers" tone="blue" delay={0.16} />
-        <PremiumStatCard label="Employees" description="Active workforce" value={stats.employees.active} icon={UserCheck} href="/employees" tone="cyan" delay={0.2} />
-        <PremiumStatCard label="Monthly Revenue" description="This month collections" value={stats.financials.monthlyRevenue} icon={Activity} growth={stats.growth.revenue} spark={stats.sparks.revenue} format="currency" tone="gold" delay={0.24} />
-        <PremiumStatCard label="Monthly Expenses" description="This month spend" value={stats.financials.monthlyExpenses} icon={TrendingDown} growth={stats.growth.expenses} spark={stats.sparks.expenses} format="currency" tone="red" delay={0.28} />
-      </section>
+      {/* Secondary KPIs */}
+      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        <PremiumStatCard label="Monthly Revenue" description="This month" value={stats.financials.monthlyRevenue} icon={Activity} spark={stats.sparks.revenue} format="currency" tone={0} delay={0} />
+        <PremiumStatCard label="Monthly Expenses" description="This month spend" value={stats.financials.monthlyExpenses} icon={Wallet} growth={stats.growth.expenses} spark={stats.sparks.expenses} format="currency" tone={4} delay={0.05} />
+        <PremiumStatCard label="Active Employees" description="Workforce" value={stats.employees.active} icon={UserCheck} href="/employees" tone={5} delay={0.1} />
+        <PremiumStatCard label="Pending Payments" description="Outstanding" value={stats.financials.pendingPayments} icon={Clock} href="/finance/invoices" format="currency" tone={3} delay={0.15} />
+      </div>
 
-      {/* Today's Attendance */}
-      <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4 2xl:grid-cols-7">
-        <PremiumStatCard
-          label="Today's Attendance"
-          description="Records marked today"
-          value={stats.attendance.total}
-          icon={CalendarDays}
-          href="/attendance"
-          tone="blue"
-          delay={0}
-        />
-        <PremiumStatCard
-          label="Present"
-          description="On-site present"
-          value={stats.attendance.present}
-          icon={CheckCircle2}
-          href="/attendance"
-          tone="green"
-          delay={0.04}
-        />
-        <PremiumStatCard
-          label="Absent"
-          description="Not present today"
-          value={stats.attendance.absent}
-          icon={Users}
-          href="/attendance"
-          tone="red"
-          delay={0.08}
-        />
-        <PremiumStatCard
-          label="Late"
-          description="Late arrivals"
-          value={stats.attendance.late}
-          icon={Clock}
-          href="/attendance"
-          tone="amber"
-          delay={0.12}
-        />
-        <PremiumStatCard
-          label="Half Day"
-          description="Partial presence"
-          value={stats.attendance.halfDay}
-          icon={Activity}
-          href="/attendance"
-          tone="cyan"
-          delay={0.16}
-        />
-        <PremiumStatCard
-          label="On Leave"
-          description="Approved leave"
-          value={stats.attendance.leave}
-          icon={Briefcase}
-          href="/attendance"
-          tone="blue"
-          delay={0.2}
-        />
-        <PremiumStatCard
-          label="Attendance %"
-          description="Present rate vs active staff"
-          value={stats.attendance.percentage}
-          icon={Percent}
-          href="/attendance"
-          tone="gold"
-          delay={0.24}
-        />
-      </section>
+      {/* Quick Actions */}
+      <div>
+        <h2 className="text-sm font-semibold text-[#64748B] uppercase tracking-wider mb-3">Quick Actions</h2>
+        <div className="grid gap-2.5 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-7">
+          {shortcuts.map((s, i) => {
+            const Icon = s.icon;
+            return (
+              <motion.button
+                key={s.href}
+                type="button"
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 0.03 * i }}
+                onClick={() => router.push(s.href)}
+                className="flex items-center gap-3 rounded-[10px] border border-[#E2E8F0] bg-white px-3.5 py-2.5 text-left text-sm font-medium text-[#0F172A] premium-shadow transition-all duration-200 hover:border-[#2563EB]/30 hover:bg-[#EFF6FF] hover:text-[#2563EB] active:scale-[0.98]"
+              >
+                <div className="rounded-[8px] bg-[#F1F5F9] p-1.5 text-[#64748B] transition group-hover:bg-[#EFF6FF]">
+                  <Icon className="size-4" />
+                </div>
+                {s.label}
+              </motion.button>
+            );
+          })}
+        </div>
+      </div>
 
-      {/* Analytics row */}
-      <section className="grid gap-6 xl:grid-cols-3">
+      {/* Charts Section */}
+      <div className="grid gap-5 xl:grid-cols-3">
         <Card className="xl:col-span-2">
           <CardHeader className="flex flex-row items-center justify-between">
             <div>
-              <CardTitle>Revenue Analytics</CardTitle>
-              <p className="mt-1 text-xs text-[#64748B]">6-month live MongoDB trend</p>
+              <CardTitle>Revenue Trend</CardTitle>
+              <p className="mt-0.5 text-xs text-[#64748B]">6-month overview</p>
             </div>
-            <Button variant="secondary" size="sm" onClick={() => router.push("/reports")}>
-              Full report <ArrowRight className="size-3.5" />
+            <Button variant="ghost" size="sm" onClick={() => router.push("/reports")}>
+              Details <ArrowRight className="size-3.5" />
             </Button>
           </CardHeader>
           <CardContent>
-            <ResponsiveContainer width="100%" height={300}>
-              <AreaChart data={stats.chartData}>
-                <defs>
-                  <linearGradient id="revFill" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#D4AF37" stopOpacity={0.4} />
-                    <stop offset="95%" stopColor="#D4AF37" stopOpacity={0} />
-                  </linearGradient>
-                </defs>
-                <CartesianGrid strokeDasharray="3 3" stroke="#E2E8F0" />
-                <XAxis dataKey="month" stroke="#94A3B8" fontSize={12} />
-                <YAxis stroke="#94A3B8" fontSize={12} />
-                <Tooltip contentStyle={tooltipStyle} />
-                <Area type="monotone" dataKey="revenue" stroke="#D4AF37" fill="url(#revFill)" strokeWidth={2.5} />
-              </AreaChart>
-            </ResponsiveContainer>
+            <div className="h-[280px]">
+              <ResponsiveContainer width="100%" height="100%">
+                <AreaChart data={stats.chartData}>
+                  <defs>
+                    <linearGradient id="revFill" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor="#2563EB" stopOpacity={0.3} />
+                      <stop offset="95%" stopColor="#2563EB" stopOpacity={0} />
+                    </linearGradient>
+                    <linearGradient id="expFill" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor="#EF4444" stopOpacity={0.2} />
+                      <stop offset="95%" stopColor="#EF4444" stopOpacity={0} />
+                    </linearGradient>
+                    <linearGradient id="profFill" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor="#22C55E" stopOpacity={0.2} />
+                      <stop offset="95%" stopColor="#22C55E" stopOpacity={0} />
+                    </linearGradient>
+                  </defs>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#F1F5F9" vertical={false} />
+                  <XAxis dataKey="month" stroke="#94A3B8" fontSize={12} tickLine={false} axisLine={false} />
+                  <YAxis stroke="#94A3B8" fontSize={12} tickLine={false} axisLine={false} />
+                  <Tooltip contentStyle={tooltipStyle} />
+                  <Area type="monotone" dataKey="revenue" stroke="#2563EB" fill="url(#revFill)" strokeWidth={2.5} />
+                  <Area type="monotone" dataKey="expenses" stroke="#EF4444" fill="url(#expFill)" strokeWidth={2} />
+                  <Area type="monotone" dataKey="profit" stroke="#22C55E" fill="url(#profFill)" strokeWidth={2} />
+                </AreaChart>
+              </ResponsiveContainer>
+            </div>
           </CardContent>
         </Card>
 
         <Card>
           <CardHeader>
-            <CardTitle>Project Mix</CardTitle>
-            <p className="mt-1 text-xs text-[#64748B]">Status distribution</p>
+            <CardTitle>Project Status</CardTitle>
+            <p className="mt-0.5 text-xs text-[#64748B]">Distribution by status</p>
           </CardHeader>
-          <CardContent>
-            <ResponsiveContainer width="100%" height={220}>
-              <PieChart>
-                <Pie data={projectPie.length ? projectPie : [{ name: "None", value: 1 }]} dataKey="value" nameKey="name" innerRadius={58} outerRadius={86} paddingAngle={3}>
-                  {(projectPie.length ? projectPie : [{ name: "None", value: 1 }]).map((_, i) => (
-                    <Cell key={i} fill={PIE_COLORS[i % PIE_COLORS.length]} />
-                  ))}
-                </Pie>
-                <Tooltip contentStyle={tooltipStyle} />
-              </PieChart>
-            </ResponsiveContainer>
-            <div className="mt-2 grid grid-cols-2 gap-2">
+          <CardContent className="flex flex-col items-center">
+            <div className="h-[200px] w-full">
+              <ResponsiveContainer width="100%" height="100%">
+                <PieChart>
+                  <Pie
+                    data={projectPie.length ? projectPie : [{ name: "None", value: 1 }]}
+                    dataKey="value"
+                    nameKey="name"
+                    innerRadius={55}
+                    outerRadius={80}
+                    paddingAngle={3}
+                  >
+                    {(projectPie.length ? projectPie : [{ name: "None", value: 1 }]).map((_, i) => (
+                      <Cell key={i} fill={PIE_COLORS[i % PIE_COLORS.length]} />
+                    ))}
+                  </Pie>
+                  <Tooltip contentStyle={tooltipStyle} />
+                </PieChart>
+              </ResponsiveContainer>
+            </div>
+            <div className="mt-2 grid grid-cols-2 gap-x-4 gap-y-2 w-full">
               {projectPie.map((p, i) => (
                 <div key={p.name} className="flex items-center gap-2 text-xs text-[#64748B]">
                   <span className="h-2 w-2 rounded-full" style={{ background: PIE_COLORS[i % PIE_COLORS.length] }} />
-                  {p.name}: <span className="font-mono-num text-[#0F172A]">{p.value}</span>
+                  <span className="flex-1">{p.name}</span>
+                  <span className="font-medium text-[#0F172A]">{p.value}</span>
                 </div>
               ))}
             </div>
           </CardContent>
         </Card>
-      </section>
+      </div>
 
-      <section className="grid gap-6 lg:grid-cols-2">
+      {/* Expense vs Profit Bar */}
+      <div className="grid gap-5 lg:grid-cols-2">
         <Card>
           <CardHeader>
-            <CardTitle>Expense Analytics</CardTitle>
-            <p className="mt-1 text-xs text-[#64748B]">Spend vs profit by month</p>
+            <CardTitle>Expenses & Profit</CardTitle>
+            <p className="mt-0.5 text-xs text-[#64748B]">Monthly breakdown</p>
           </CardHeader>
           <CardContent>
-            <ResponsiveContainer width="100%" height={280}>
-              <BarChart data={stats.chartData}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#E2E8F0" />
-                <XAxis dataKey="month" stroke="#94A3B8" fontSize={12} />
-                <YAxis stroke="#94A3B8" fontSize={12} />
-                <Tooltip contentStyle={tooltipStyle} />
-                <Bar dataKey="expenses" fill="#EF4444" radius={[8, 8, 0, 0]} />
-                <Bar dataKey="profit" fill="#22C55E" radius={[8, 8, 0, 0]} />
-              </BarChart>
-            </ResponsiveContainer>
+            <div className="h-[260px]">
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={stats.chartData}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#F1F5F9" vertical={false} />
+                  <XAxis dataKey="month" stroke="#94A3B8" fontSize={12} tickLine={false} axisLine={false} />
+                  <YAxis stroke="#94A3B8" fontSize={12} tickLine={false} axisLine={false} />
+                  <Tooltip contentStyle={tooltipStyle} />
+                  <Bar dataKey="expenses" fill="#EF4444" radius={[6, 6, 0, 0]} />
+                  <Bar dataKey="profit" fill="#22C55E" radius={[6, 6, 0, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
           </CardContent>
         </Card>
 
         <Card>
           <CardHeader>
-            <CardTitle>Performance Rings</CardTitle>
-            <p className="mt-1 text-xs text-[#64748B]">Project completion & attendance</p>
+            <CardTitle>Attendance Overview</CardTitle>
+            <p className="mt-0.5 text-xs text-[#64748B]">Today&rsquo;s status</p>
           </CardHeader>
-          <CardContent className="grid gap-4 sm:grid-cols-2">
-            <div>
-              <ResponsiveContainer width="100%" height={180}>
-                <RadialBarChart innerRadius="55%" outerRadius="95%" data={[radialData[0]]} startAngle={90} endAngle={-270}>
-                  <RadialBar background dataKey="value" cornerRadius={10} />
-                </RadialBarChart>
-              </ResponsiveContainer>
-              <p className="text-center text-sm font-semibold">
-                Completion <span className="font-mono-num text-[#C9A227]">{stats.projects.completionPct}%</span>
-              </p>
-            </div>
-            <div>
-              <ResponsiveContainer width="100%" height={180}>
-                <RadialBarChart innerRadius="55%" outerRadius="95%" data={[radialData[1]]} startAngle={90} endAngle={-270}>
-                  <RadialBar background dataKey="value" cornerRadius={10} />
-                </RadialBarChart>
-              </ResponsiveContainer>
-              <p className="text-center text-sm font-semibold">
-                Attendance{" "}
-                <span className="font-mono-num text-emerald-600">
-                  {stats.attendance.percentage || stats.employees.attendancePct}%
-                </span>
-              </p>
-            </div>
-            <div className="sm:col-span-2 grid grid-cols-3 gap-3">
-              <div className="rounded-2xl border border-[#E2E8F0] bg-[#F8FAFC] p-3">
-                <p className="text-[10px] uppercase tracking-wider text-[#64748B]">Managers</p>
-                <p className="mt-1 font-mono-num text-xl font-bold">{stats.employees.managers}</p>
+          <CardContent className="space-y-3">
+            <div className="grid grid-cols-2 gap-3">
+              <div className="rounded-[10px] border border-[#E2E8F0] p-3">
+                <p className="text-xs text-[#64748B]">Present</p>
+                <p className="text-xl font-bold text-[#22C55E]">{stats.attendance.present}</p>
               </div>
-              <div className="rounded-2xl border border-[#E2E8F0] bg-[#F8FAFC] p-3">
-                <p className="text-[10px] uppercase tracking-wider text-[#64748B]">Invoices</p>
-                <p className="mt-1 font-mono-num text-xl font-bold">{stats.financials.invoices}</p>
+              <div className="rounded-[10px] border border-[#E2E8F0] p-3">
+                <p className="text-xs text-[#64748B]">Absent</p>
+                <p className="text-xl font-bold text-[#EF4444]">{stats.attendance.absent}</p>
               </div>
-              <div className="rounded-2xl border border-[#E2E8F0] bg-[#F8FAFC] p-3">
-                <p className="text-[10px] uppercase tracking-wider text-[#64748B]">Tasks Today</p>
-                <p className="mt-1 font-mono-num text-xl font-bold">{stats.tasks.today}</p>
+              <div className="rounded-[10px] border border-[#E2E8F0] p-3">
+                <p className="text-xs text-[#64748B]">Late</p>
+                <p className="text-xl font-bold text-[#F59E0B]">{stats.attendance.late}</p>
+              </div>
+              <div className="rounded-[10px] border border-[#E2E8F0] p-3">
+                <p className="text-xs text-[#64748B]">Leave</p>
+                <p className="text-xl font-bold text-[#2563EB]">{stats.attendance.leave}</p>
               </div>
             </div>
+            <div className="flex items-center justify-between rounded-[10px] bg-[#F8FAFC] px-4 py-3">
+              <span className="text-sm text-[#64748B]">Attendance Rate</span>
+              <span className="text-lg font-bold text-[#0F172A]">{stats.attendance.percentage}%</span>
+            </div>
+            <Button variant="secondary" className="w-full" size="sm" onClick={() => router.push("/attendance")}>
+              View Full Attendance
+            </Button>
           </CardContent>
         </Card>
-      </section>
+      </div>
 
-      {/* Lists + calendar */}
-      <section className="grid gap-6 xl:grid-cols-4">
-        <Card className="xl:col-span-1">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <CalendarDays className="size-4 text-[#C9A227]" /> Calendar
+      {/* Lists — Calendar, Deadlines, Quick Stats */}
+      <div className="grid gap-5 sm:grid-cols-2 xl:grid-cols-3">
+        {/* Calendar */}
+        <Card className="group/card transition-all duration-200 hover:-translate-y-0.5 hover:shadow-lg">
+          <CardHeader className="flex flex-row items-center justify-between">
+            <CardTitle className="flex items-center gap-2 text-lg font-semibold">
+              <CalendarDays className="size-4 text-[#64748B]" /> Calendar
             </CardTitle>
+            <div className="flex items-center gap-1">
+              <button
+                type="button"
+                onClick={() => setMonthOffset((p) => p - 1)}
+                className="flex h-7 w-7 items-center justify-center rounded-[6px] text-[#64748B] transition hover:bg-[#F1F5F9] hover:text-[#0F172A]"
+              >
+                <ChevronLeft className="size-3.5" />
+              </button>
+              <button
+                type="button"
+                onClick={() => setMonthOffset((p) => p + 1)}
+                className="flex h-7 w-7 items-center justify-center rounded-[6px] text-[#64748B] transition hover:bg-[#F1F5F9] hover:text-[#0F172A]"
+              >
+                <ChevronRight className="size-3.5" />
+              </button>
+            </div>
           </CardHeader>
           <CardContent>
-            <div className="mb-3 text-sm font-semibold">
-              {new Date().toLocaleDateString(undefined, { month: "long", year: "numeric" })}
-            </div>
-            <div className="grid grid-cols-7 gap-1 text-center text-[10px] text-[#64748B]">
-              {["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map((d) => (
-                <span key={d}>{d.charAt(0)}</span>
+            <p className="mb-4 text-sm font-semibold text-[#0F172A]">{calendarLabel}</p>
+            <div className="grid grid-cols-7 gap-0.5 text-center text-xs text-[#94A3B8]">
+              {["S", "M", "T", "W", "T", "F", "S"].map((d) => (
+                <span key={d} className="py-1 text-[11px] font-medium">{d}</span>
               ))}
             </div>
-            <div className="mt-2 grid grid-cols-7 gap-1">
+            <div className="mt-0.5 grid grid-cols-7 gap-0.5">
               {calendarDays.map((c, i) => (
                 <div
                   key={i}
-                  className={`flex h-8 items-center justify-center rounded-lg text-xs ${
-                    c.today
-                      ? "bg-[#D4AF37] font-bold text-white shadow-lg shadow-amber-500/25"
+                  className={`flex h-8 items-center justify-center rounded-[8px] text-xs font-medium transition-all duration-150 ${
+                    c.isToday
+                      ? "bg-[#2563EB] text-white shadow-sm"
                       : c.day
-                        ? "text-[#64748B] hover:bg-[#F1F5F9]"
+                        ? "text-[#0F172A] hover:bg-[#F1F5F9] cursor-default"
                         : ""
                   }`}
                 >
@@ -533,103 +468,113 @@ export default function DashboardPage() {
                 </div>
               ))}
             </div>
-            <Button className="mt-4 w-full" variant="secondary" size="sm" onClick={() => router.push("/tasks")}>
-              <Plus className="size-3.5" /> Schedule task
-            </Button>
+            <button
+              type="button"
+              onClick={() => router.push("/tasks")}
+              className="mt-4 flex w-full items-center justify-center gap-2 rounded-[10px] border border-dashed border-[#E2E8F0] px-3 py-2.5 text-sm font-medium text-[#64748B] transition-all duration-200 hover:border-[#2563EB]/40 hover:bg-[#EFF6FF] hover:text-[#2563EB]"
+            >
+              <Plus className="size-3.5" /> Add Task
+            </button>
           </CardContent>
         </Card>
 
-        <Card className="xl:col-span-1">
-          <CardHeader className="flex flex-row items-center justify-between">
-            <CardTitle className="flex items-center gap-2">
-              <Bell className="size-4 text-[#C9A227]" /> Notifications
-            </CardTitle>
-            <span className="rounded-full bg-[rgba(212,175,55,0.1)] px-2 py-0.5 text-[10px] font-bold text-[#C9A227]">
-              {stats.notifications.unread}
-            </span>
-          </CardHeader>
-          <CardContent className="space-y-2">
-            {(stats.notifications.items?.length ? stats.notifications.items : stats.recentActivities.slice(0, 5)).map(
-              (item: { _id: string; title?: string; message?: string; description?: string; createdAt: string }) => (
-                <button
-                  key={item._id}
-                  type="button"
-                  onClick={() => router.push("/notifications")}
-                  className="w-full rounded-[14px] border border-[#E2E8F0] bg-[#F8FAFC] p-3 text-left transition hover:bg-[rgba(212,175,55,0.1)]"
-                >
-                  <p className="text-sm font-medium">{item.title ?? item.description}</p>
-                  <p className="mt-1 text-[11px] text-[#64748B]">
-                    {item.message ?? formatDateTime(item.createdAt)}
-                  </p>
-                </button>
-              )
-            )}
-          </CardContent>
-        </Card>
-
-        <Card className="xl:col-span-1">
+        {/* Deadlines */}
+        <Card className="group/card transition-all duration-200 hover:-translate-y-0.5 hover:shadow-lg">
           <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Clock className="size-4 text-[#C9A227]" /> Deadlines
+            <CardTitle className="flex items-center gap-2 text-lg font-semibold">
+              <Target className="size-4 text-[#64748B]" /> Deadlines
             </CardTitle>
           </CardHeader>
-          <CardContent className="space-y-2">
+          <CardContent>
             {stats.upcomingDeadlines.length === 0 ? (
-              <p className="text-sm text-[#64748B]">No upcoming deadlines</p>
-            ) : (
-              stats.upcomingDeadlines.map((d) => (
+              <div className="flex flex-col items-center justify-center py-8 text-center">
+                <div className="mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-[#F0FDF4]">
+                  <CheckCircle className="size-7 text-[#22C55E]" />
+                </div>
+                <p className="text-base font-semibold text-[#0F172A]">No upcoming deadlines</p>
+                <p className="mt-1 text-sm text-[#64748B]">
+                  You&rsquo;re all caught up. New deadlines will appear here.
+                </p>
                 <button
-                  key={d._id}
                   type="button"
-                  onClick={() => router.push("/projects")}
-                  className="flex w-full items-center justify-between rounded-[14px] border border-[#E2E8F0] p-3 text-left hover:bg-[#F1F5F9]"
+                  onClick={() => router.push("/tasks")}
+                  className="mt-5 flex items-center gap-2 rounded-[10px] bg-[#2563EB] px-4 py-2 text-sm font-medium text-white transition-all duration-200 hover:bg-[#1D4ED8] active:scale-[0.97]"
                 >
-                  <div>
-                    <p className="text-sm font-medium">{d.name}</p>
-                    <p className="text-[11px] text-[#64748B]">{formatDate(d.deadline)}</p>
-                  </div>
-                  <span className="font-mono-num text-xs text-[#C9A227]">{d.progress}%</span>
+                  <Plus className="size-3.5" /> Create Task
                 </button>
-              ))
+              </div>
+            ) : (
+              <div className="space-y-2">
+                {stats.upcomingDeadlines.map((d, idx) => (
+                  <div key={d._id} className="relative pl-5">
+                    {idx < stats.upcomingDeadlines.length - 1 && (
+                      <div className="absolute left-[7px] top-4 bottom-0 w-px bg-[#E2E8F0]" />
+                    )}
+                    <div className="absolute left-0 top-1.5 h-3.5 w-3.5 rounded-full border-2 border-[#2563EB] bg-white" />
+                    <button
+                      type="button"
+                      onClick={() => router.push("/projects")}
+                      className="w-full rounded-[10px] border border-[#E2E8F0] bg-white p-3 text-left transition hover:bg-[#F8FAFC] hover:shadow-sm"
+                    >
+                      <div className="flex items-center justify-between gap-2">
+                        <p className="text-sm font-medium text-[#0F172A]">{d.name}</p>
+                        <span className="shrink-0 rounded-full bg-[#EFF6FF] px-2 py-0.5 text-[11px] font-semibold text-[#2563EB]">
+                          {d.progress}%
+                        </span>
+                      </div>
+                      <p className="mt-1 text-xs text-[#64748B]">{formatDate(d.deadline)}</p>
+                    </button>
+                  </div>
+                ))}
+              </div>
             )}
           </CardContent>
         </Card>
 
-        <Card className="xl:col-span-1">
+        {/* Quick Stats */}
+        <Card className="group/card transition-all duration-200 hover:-translate-y-0.5 hover:shadow-lg">
           <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Briefcase className="size-4 text-cyan-300" /> Employee Pulse
+            <CardTitle className="flex items-center gap-2 text-lg font-semibold">
+              <Briefcase className="size-4 text-[#64748B]" /> Quick Stats
             </CardTitle>
           </CardHeader>
-          <CardContent className="space-y-3">
-            <div className="rounded-2xl border border-[#E2E8F0] bg-gradient-to-br from-[rgba(212,175,55,0.08)] to-transparent p-4">
-              <p className="text-xs text-[#64748B]">Active staff</p>
-              <p className="mt-1 font-display text-3xl font-bold">{stats.employees.active}</p>
-              <p className="mt-2 text-xs text-emerald-600">
-                Today {stats.attendance.present + stats.attendance.late + stats.attendance.workFromHome} present ·{" "}
-                {stats.attendance.percentage}%
-              </p>
-            </div>
-            <div className="grid grid-cols-2 gap-2">
-              <div className="rounded-xl border border-[#E2E8F0] p-3">
-                <Percent className="mb-2 size-4 text-[#C9A227]" />
-                <p className="font-mono-num text-lg font-bold">{stats.attendance.percentage}%</p>
-                <p className="text-[10px] text-[#64748B]">Attendance</p>
+          <CardContent>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="rounded-[12px] border border-[#E2E8F0] bg-white p-4 transition-all duration-200 hover:border-[#2563EB]/20 hover:bg-[#F8FAFC] hover:shadow-sm">
+                <div className="mb-3 flex h-9 w-9 items-center justify-center rounded-[10px] bg-[#EFF6FF]">
+                  <Receipt className="size-[18px] text-[#2563EB]" />
+                </div>
+                <p className="text-2xl font-bold text-[#0F172A]">{stats.financials.invoices}</p>
+                <p className="mt-0.5 text-sm text-[#64748B]">Invoices</p>
               </div>
-              <div className="rounded-xl border border-[#E2E8F0] p-3">
-                <CheckCircle2 className="mb-2 size-4 text-emerald-500" />
-                <p className="font-mono-num text-lg font-bold">{stats.attendance.present}</p>
-                <p className="text-[10px] text-[#64748B]">Present</p>
+              <div className="rounded-[12px] border border-[#E2E8F0] bg-white p-4 transition-all duration-200 hover:border-[#2563EB]/20 hover:bg-[#F8FAFC] hover:shadow-sm">
+                <div className="mb-3 flex h-9 w-9 items-center justify-center rounded-[10px] bg-[#F0FDF4]">
+                  <UserCheck className="size-[18px] text-[#22C55E]" />
+                </div>
+                <p className="text-2xl font-bold text-[#0F172A]">{stats.employees.managers}</p>
+                <p className="mt-0.5 text-sm text-[#64748B]">Managers</p>
+              </div>
+              <div className="rounded-[12px] border border-[#E2E8F0] bg-white p-4 transition-all duration-200 hover:border-[#2563EB]/20 hover:bg-[#F8FAFC] hover:shadow-sm">
+                <div className="mb-3 flex h-9 w-9 items-center justify-center rounded-[10px] bg-[#FFF7ED]">
+                  <ListTodo className="size-[18px] text-[#F59E0B]" />
+                </div>
+                <p className="text-2xl font-bold text-[#0F172A]">{stats.tasks.today}</p>
+                <p className="mt-0.5 text-sm text-[#64748B]">Tasks Today</p>
+              </div>
+              <div className="rounded-[12px] border border-[#E2E8F0] bg-white p-4 transition-all duration-200 hover:border-[#2563EB]/20 hover:bg-[#F8FAFC] hover:shadow-sm">
+                <div className="mb-3 flex h-9 w-9 items-center justify-center rounded-[10px] bg-[#F8FAFC]">
+                  <Users className="size-[18px] text-[#64748B]" />
+                </div>
+                <p className="text-2xl font-bold text-[#0F172A]">{stats.customers.total}</p>
+                <p className="mt-0.5 text-sm text-[#64748B]">Customers</p>
               </div>
             </div>
-            <Button variant="secondary" className="w-full" size="sm" onClick={() => router.push("/attendance")}>
-              Open Attendance
-            </Button>
           </CardContent>
         </Card>
-      </section>
+      </div>
 
-      <section className="grid gap-6 lg:grid-cols-2">
+      {/* Customers & Projects */}
+      <div className="grid gap-5 lg:grid-cols-2">
         <Card>
           <CardHeader className="flex flex-row items-center justify-between">
             <CardTitle>Latest Customers</CardTitle>
@@ -637,24 +582,24 @@ export default function DashboardPage() {
               View all
             </Button>
           </CardHeader>
-          <CardContent className="space-y-2">
+          <CardContent className="space-y-1.5">
             {stats.latestCustomers.map((c) => (
               <button
                 key={c._id}
                 type="button"
                 onClick={() => router.push("/crm/customers")}
-                className="flex w-full items-center justify-between rounded-[14px] border border-[#E2E8F0] p-3 text-left transition hover:bg-[#F1F5F9]"
+                className="flex w-full items-center justify-between rounded-[8px] border border-[#E2E8F0] bg-white p-2.5 text-left transition hover:bg-[#F8FAFC]"
               >
                 <div className="flex items-center gap-3">
-                  <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-[rgba(212,175,55,0.1)] text-sm font-bold text-[#C9A227]">
+                  <div className="flex h-8 w-8 items-center justify-center rounded-[8px] bg-[#EFF6FF] text-sm font-bold text-[#2563EB]">
                     {c.name.charAt(0)}
                   </div>
                   <div>
-                    <p className="text-sm font-semibold">{c.name}</p>
-                    <p className="text-[11px] text-[#64748B]">{c.company ?? "Individual"}</p>
+                    <p className="text-sm font-medium text-[#0F172A]">{c.name}</p>
+                    <p className="text-xs text-[#64748B]">Customer</p>
                   </div>
                 </div>
-                <span className="rounded-full bg-[#F1F5F9] px-2 py-0.5 text-[10px] capitalize text-[#64748B]">
+                <span className="rounded-full bg-[#F1F5F9] px-2 py-0.5 text-[10px] font-medium capitalize text-[#64748B]">
                   {c.status}
                 </span>
               </button>
@@ -669,59 +614,33 @@ export default function DashboardPage() {
               View all
             </Button>
           </CardHeader>
-          <CardContent className="space-y-2">
+          <CardContent className="space-y-1.5">
             {stats.latestProjects.map((p) => (
               <button
                 key={p._id}
                 type="button"
                 onClick={() => router.push("/projects")}
-                className="w-full rounded-[14px] border border-[#E2E8F0] p-3 text-left transition hover:bg-[#F1F5F9]"
+                className="w-full rounded-[8px] border border-[#E2E8F0] bg-white p-2.5 text-left transition hover:bg-[#F8FAFC]"
               >
                 <div className="flex items-center justify-between gap-3">
-                  <p className="text-sm font-semibold">{p.name}</p>
-                  <span className="font-mono-num text-xs text-[#C9A227]">{p.progress}%</span>
+                  <p className="text-sm font-medium text-[#0F172A]">{p.name}</p>
+                  <span className="text-xs font-medium text-[#2563EB]">{p.progress}%</span>
                 </div>
-                <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-[#F1F5F9]">
+                <div className="mt-1.5 h-1.5 overflow-hidden rounded-full bg-[#F1F5F9]">
                   <div
-                    className="h-full rounded-full bg-gradient-to-r from-[#C9A227] to-[#D4AF37]"
+                    className="h-full rounded-full bg-[#2563EB]"
                     style={{ width: `${Math.min(100, Number(p.progress) || 0)}%` }}
                   />
                 </div>
-                <p className="mt-2 text-[11px] capitalize text-[#64748B]">
-                  {p.status} · due {formatDate(p.deadline)}
+                <p className="mt-1.5 text-xs capitalize text-[#64748B]">
+                  {p.status} &middot; due {formatDate(p.deadline)}
                 </p>
               </button>
             ))}
           </CardContent>
         </Card>
-      </section>
+      </div>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Recent Activities</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="space-y-2">
-            {stats.recentActivities.length === 0 ? (
-              <p className="text-sm text-[#64748B]">No recent activity logged</p>
-            ) : (
-              stats.recentActivities.map((a) => (
-                <div
-                  key={a._id}
-                  className="flex items-center gap-4 rounded-[14px] border border-[#E2E8F0] bg-[#F8FAFC] px-4 py-3"
-                >
-                  <div className="h-2.5 w-2.5 rounded-full bg-[#D4AF37] shadow-[0_0_12px_#D4AF37]" />
-                  <div className="min-w-0 flex-1">
-                    <p className="truncate text-sm">{a.description}</p>
-                    <p className="text-[11px] text-[#64748B]">by {a.userName}</p>
-                  </div>
-                  <p className="shrink-0 text-[11px] text-[#64748B]">{formatDateTime(a.createdAt)}</p>
-                </div>
-              ))
-            )}
-          </div>
-        </CardContent>
-      </Card>
     </div>
   );
 }

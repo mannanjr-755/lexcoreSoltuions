@@ -32,7 +32,7 @@ const icons = {
 const styles: Record<ToastType, string> = {
   success: "border-green-200 bg-green-50 text-green-700",
   error: "border-red-200 bg-red-50 text-red-700",
-  info: "border-[rgba(212,175,55,0.35)] bg-[rgba(212,175,55,0.1)] text-[#C9A227]",
+  info: "border-blue-200 bg-blue-50 text-blue-700",
   warning: "border-amber-200 bg-amber-50 text-amber-700"
 };
 
@@ -75,7 +75,7 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
                 animate={{ opacity: 1, y: 0, scale: 1 }}
                 exit={{ opacity: 0, x: 24 }}
                 className={cn(
-                  "pointer-events-auto flex items-start gap-3 rounded-2xl border p-4 shadow-lg",
+                  "pointer-events-auto flex items-start gap-3 rounded-[16px] border p-4 premium-shadow-lg",
                   styles[item.type]
                 )}
               >
