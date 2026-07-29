@@ -13,9 +13,9 @@ interface ChatWindowProps {
   workspace: Workspace;
   messages: Message[];
   currentUserId: string;
-  members: TeamMember[];
   onSend: (text: string) => void;
   onDelete: (id: string) => void;
+  onEdit: (id: string, text: string) => void;
   onBack?: () => void;
 }
 
@@ -43,18 +43,19 @@ function groupByDate(msgs: Message[]) {
   return groups;
 }
 
-export function ChatWindow({ workspace, messages, currentUserId, members, onSend, onDelete, onBack }: ChatWindowProps) {
+export function ChatWindow({ workspace, messages, currentUserId, onSend, onDelete, onEdit, onBack }: ChatWindowProps) {
   const [replyTo, setReplyTo] = useState<Message | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [showSearch, setShowSearch] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
-  const scrollRef = useRef<HTMLDivElement>(null);
 
   const memberMap = useMemo(() => {
     const map: Record<string, TeamMember> = {};
-    for (const m of members) map[m.id] = m;
+    for (const m of workspace.members) map[m.id] = m;
     return map;
-  }, [members]);
+  }, [workspace.members]);
+
+  const fallbackMember: TeamMember = { id: "unknown", name: "Unknown", email: "", role: "", color: "#94A3B8", isOnline: false };
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -63,28 +64,28 @@ export function ChatWindow({ workspace, messages, currentUserId, members, onSend
   const filtered = useMemo(() => {
     if (!searchQuery.trim()) return messages;
     const q = searchQuery.toLowerCase();
-    return messages.filter((m) => m.text.toLowerCase().includes(q));
-  }, [messages, searchQuery]);
+    return messages.filter((m) =>
+      m.text.toLowerCase().includes(q) ||
+      (memberMap[m.senderId]?.name ?? "").toLowerCase().includes(q)
+    );
+  }, [messages, searchQuery, memberMap]);
 
   const grouped = groupByDate(filtered);
 
   const handleReply = useCallback((msg: Message) => {
-    const sender = memberMap[msg.senderId];
     setReplyTo(msg);
-  }, [memberMap]);
+  }, []);
 
   const handleSend = useCallback((text: string) => {
-    if (replyTo) {
-      setReplyTo(null);
-    }
+    setReplyTo(null);
     onSend(text);
-  }, [replyTo, onSend]);
+  }, [onSend]);
 
   const handleCopy = useCallback((text: string) => {
     navigator.clipboard.writeText(text);
   }, []);
 
-  const onlineCount = members.filter((m) => m.isOnline).length;
+  const onlineCount = workspace.members.filter((m) => m.isOnline).length;
 
   return (
     <div className="flex h-full flex-col">
@@ -100,16 +101,16 @@ export function ChatWindow({ workspace, messages, currentUserId, members, onSend
         </div>
         <div className="min-w-0 flex-1">
           <p className="text-sm font-semibold text-[#0F172A]">{workspace.name}</p>
-          <p className="text-[11px] text-[#64748B]">{workspace.memberCount} Members · {onlineCount} Online</p>
+          <p className="text-[11px] text-[#64748B]">{workspace.members.length} Members · {onlineCount} Online</p>
         </div>
         <div className="flex items-center gap-1.5">
           <div className="hidden items-center -space-x-1.5 sm:flex">
-            {members.slice(0, 5).map((m) => (
+            {workspace.members.map((m) => (
               <div
                 key={m.id}
                 className="flex h-7 w-7 items-center justify-center rounded-full border-2 border-white text-[10px] font-bold text-white"
                 style={{ backgroundColor: m.color }}
-                title={m.name}
+                title={`${m.name} (${m.email})`}
               >
                 {m.name[0]}
               </div>
@@ -132,7 +133,7 @@ export function ChatWindow({ workspace, messages, currentUserId, members, onSend
           <input
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="Search messages..."
+            placeholder="Search messages or members..."
             autoFocus
             className="flex-1 bg-transparent text-sm text-[#0F172A] outline-none placeholder:text-[#94A3B8]"
           />
@@ -146,7 +147,7 @@ export function ChatWindow({ workspace, messages, currentUserId, members, onSend
       )}
 
       {/* Messages */}
-      <div ref={scrollRef} className="flex-1 overflow-y-auto bg-[#F8FAFC] px-4 py-4">
+      <div className="flex-1 overflow-y-auto bg-[#F8FAFC] px-4 py-4">
         {grouped.length === 0 ? (
           <div className="flex h-full flex-col items-center justify-center text-center">
             <p className="text-sm font-medium text-[#0F172A]">
@@ -168,8 +169,8 @@ export function ChatWindow({ workspace, messages, currentUserId, members, onSend
                 <AnimatePresence initial={false}>
                   {group.messages.map((msg, idx) => {
                     const prevMsg = idx > 0 ? group.messages[idx - 1] : null;
-                    const showName = !prevMsg || prevMsg.senderId !== msg.senderId;
-                    const sender = memberMap[msg.senderId] ?? { id: msg.senderId, name: "Unknown", role: "", avatar: "", isOnline: false, color: "#94A3B8" };
+                    const showHeader = !prevMsg || prevMsg.senderId !== msg.senderId;
+                    const sender = memberMap[msg.senderId] ?? fallbackMember;
 
                     return (
                       <motion.div
@@ -182,8 +183,9 @@ export function ChatWindow({ workspace, messages, currentUserId, members, onSend
                           message={msg}
                           sender={sender}
                           isOwn={msg.senderId === currentUserId}
-                          showName={showName}
+                          showHeader={showHeader}
                           onDelete={onDelete}
+                          onEdit={onEdit}
                           onReply={handleReply}
                           onCopy={handleCopy}
                         />

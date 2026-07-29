@@ -17,3 +17,15 @@ export interface AuthUser {
 
 export const LOGIN_LOCK_THRESHOLD = 5;
 export const LOGIN_LOCK_DURATION_MS = 30 * 60 * 1000;
+
+export const AUTHORIZED_EMAILS = [
+  "admin@lexcore.com",
+  "abdul@lexcore.com",
+  "raid@lexcore.com",
+  "yousuf@lexcore.com",
+  "anjasha@lexcore.com",
+] as const;
+
+export function isAuthorizedEmail(email: string): boolean {
+  return AUTHORIZED_EMAILS.includes(email.toLowerCase().trim() as typeof AUTHORIZED_EMAILS[number]);
+}

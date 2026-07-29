@@ -94,9 +94,9 @@ export function ChatInput({ onSend, replyTo, onCancelReply }: ChatInputProps) {
               {showEmoji && (
                 <div className="absolute bottom-full right-0 z-50 mb-2 h-56 w-72 overflow-y-auto rounded-[12px] border border-[#E2E8F0] bg-white p-3 shadow-lg">
                   <div className="grid grid-cols-8 gap-1">
-                    {EMOJI_LIST.map((e) => (
+                    {EMOJI_LIST.map((e, i) => (
                       <button
-                        key={e}
+                        key={`${e}-${i}`}
                         type="button"
                         onClick={() => insertEmoji(e)}
                         className="flex h-7 w-7 items-center justify-center rounded-[6px] text-base hover:bg-[#F1F5F9]"

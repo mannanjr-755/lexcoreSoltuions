@@ -1,12 +1,13 @@
 "use client";
 
-import { Hash, Search } from "lucide-react";
+import { Hash } from "lucide-react";
 import type { Workspace, TeamMember } from "./chat-types";
 import { cn } from "@/lib/utils";
 
 interface WorkspaceSidebarProps {
   workspace: Workspace;
   selected: boolean;
+  currentUserEmail: string;
   onSelect: () => void;
 }
 
@@ -27,14 +28,14 @@ function MemberAvatar({ member, size = "sm" }: { member: TeamMember; size?: "sm"
   );
 }
 
-export function ConversationList({ workspace, selected, onSelect }: WorkspaceSidebarProps) {
+export function ConversationList({ workspace, selected, currentUserEmail, onSelect }: WorkspaceSidebarProps) {
   const onlineCount = workspace.members.filter((m) => m.isOnline).length;
 
   return (
     <div className="flex h-full flex-col">
       <div className="border-b border-[#E2E8F0] px-4 py-3.5">
         <h2 className="text-sm font-semibold text-[#0F172A]">Team Chat</h2>
-        <p className="mt-0.5 text-[11px] text-[#64748B]">{onlineCount} online</p>
+        <p className="mt-0.5 text-[11px] text-[#64748B]">{onlineCount} of {workspace.members.length} online</p>
       </div>
 
       <div className="flex-1 overflow-y-auto">
@@ -50,12 +51,8 @@ export function ConversationList({ workspace, selected, onSelect }: WorkspaceSid
             <Hash className="size-5 text-white" />
           </div>
           <div className="min-w-0 flex-1">
-            <div className="flex items-center gap-2">
-              <span className="text-sm font-semibold text-[#0F172A]">{workspace.name}</span>
-            </div>
-            <p className="mt-0.5 text-[11px] text-[#64748B]">
-              {workspace.memberCount} members
-            </p>
+            <span className="text-sm font-semibold text-[#0F172A]">{workspace.name}</span>
+            <p className="mt-0.5 text-[11px] text-[#64748B]">{workspace.members.length} members</p>
           </div>
         </button>
 
@@ -64,24 +61,26 @@ export function ConversationList({ workspace, selected, onSelect }: WorkspaceSid
             Members
           </p>
           <div className="space-y-1">
-            {workspace.members.map((member) => (
-              <div
-                key={member.id}
-                className="flex items-center gap-2.5 rounded-[8px] px-2 py-1.5"
-              >
-                <MemberAvatar member={member} size="md" />
-                <div className="min-w-0 flex-1">
-                  <p className="truncate text-xs font-medium text-[#0F172A]">{member.name}</p>
-                  <p className="truncate text-[10px] text-[#64748B]">{member.role}</p>
+            {workspace.members.map((member) => {
+              const isYou = member.email === currentUserEmail;
+              return (
+                <div key={member.id} className="flex items-center gap-2.5 rounded-[8px] px-2 py-1.5">
+                  <MemberAvatar member={member} size="md" />
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-xs font-medium text-[#0F172A]">
+                      {member.name}{isYou && <span className="ml-1 text-[10px] text-[#64748B]">(you)</span>}
+                    </p>
+                    <p className="truncate text-[10px] text-[#64748B]">{member.email}</p>
+                  </div>
+                  <span
+                    className={cn(
+                      "h-1.5 w-1.5 shrink-0 rounded-full",
+                      member.isOnline ? "bg-[#22C55E]" : "bg-[#94A3B8]"
+                    )}
+                  />
                 </div>
-                <span
-                  className={cn(
-                    "h-1.5 w-1.5 shrink-0 rounded-full",
-                    member.isOnline ? "bg-[#22C55E]" : "bg-[#94A3B8]"
-                  )}
-                />
-              </div>
-            ))}
+              );
+            })}
           </div>
         </div>
       </div>

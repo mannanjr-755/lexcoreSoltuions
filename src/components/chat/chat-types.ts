@@ -1,10 +1,10 @@
 export interface TeamMember {
   id: string;
   name: string;
+  email: string;
   role: string;
-  avatar: string;
-  isOnline: boolean;
   color: string;
+  isOnline: boolean;
 }
 
 export interface Message {
@@ -22,6 +22,5 @@ export interface Message {
 export interface Workspace {
   id: string;
   name: string;
-  memberCount: number;
   members: TeamMember[];
 }

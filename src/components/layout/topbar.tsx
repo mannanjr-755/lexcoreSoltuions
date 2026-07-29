@@ -107,7 +107,7 @@ export function Topbar() {
 
           <div className="hidden min-w-0 md:flex items-center gap-1.5 text-xs text-[#64748B]">
             {crumbs.map((c, i) => (
-              <span key={c} className="flex items-center gap-1.5">
+              <span key={`${c}-${i}`} className="flex items-center gap-1.5">
                 {i > 0 && <ChevronRight className="size-3 text-[#94A3B8]" />}
                 <span className={cn("truncate", i === crumbs.length - 1 ? "font-medium text-[#0F172A]" : "")}>
                   {c}

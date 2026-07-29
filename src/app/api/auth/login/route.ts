@@ -8,7 +8,7 @@ import { getClientInfo, logActivity } from "@/lib/activity";
 import { rateLimit } from "@/lib/rate-limit";
 import { comparePassword } from "@/lib/bcrypt";
 import { ensureSuperAdmin } from "@/lib/ensure-admin";
-import { LOGIN_LOCK_DURATION_MS, LOGIN_LOCK_THRESHOLD } from "@/types/auth";
+import { LOGIN_LOCK_DURATION_MS, LOGIN_LOCK_THRESHOLD, isAuthorizedEmail } from "@/types/auth";
 import { logger } from "@/lib/logger";
 import { assertAuthEnv, getRawDatabaseUrl, assertValidDatabaseUrl } from "@/lib/database-url";
 
@@ -69,7 +69,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ message: "Account not found. Check your email address." }, { status: 401 });
     }
 
-    if (user.role !== "super_admin") {
+    if (!isAuthorizedEmail(user.email)) {
       await prisma.loginHistory.create({
         data: {
         userId: user.id,
@@ -77,10 +77,10 @@ export async function POST(req: Request) {
         userAgent,
         browser,
         success: false,
-        failureReason: "Only administrators can login"
+        failureReason: "Email not in authorized list"
         }
       });
-      return NextResponse.json({ message: "Access denied. Only administrators can login." }, { status: 403 });
+      return NextResponse.json({ message: "Access denied. Your email is not authorized." }, { status: 403 });
     }
 
     if (!user.isActive) {

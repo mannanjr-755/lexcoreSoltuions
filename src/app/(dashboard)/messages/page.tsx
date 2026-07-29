@@ -1,18 +1,26 @@
 "use client";
 
-import { useState, useCallback } from "react";
-import { motion } from "framer-motion";
+import { useState, useCallback, useMemo } from "react";
 import { Hash } from "lucide-react";
 import { ConversationList } from "@/components/chat/conversation-list";
 import { ChatWindow } from "@/components/chat/chat-window";
-import { workspace, teamMessages, teamMembers, currentUserId } from "@/components/chat/mock-data";
+import { WORKSPACE, SEED_MESSAGES, getMemberByEmail } from "@/components/chat/mock-data";
 import type { Message } from "@/components/chat/chat-types";
+import { useAuth } from "@/components/providers/auth-provider";
 import { cn } from "@/lib/utils";
 
 export default function MessagesPage() {
+  const { user } = useAuth();
   const [chatOpen, setChatOpen] = useState(true);
-  const [msgs, setMsgs] = useState<Message[]>(teamMessages);
+  const [msgs, setMsgs] = useState<Message[]>(SEED_MESSAGES);
   const [showMobileList, setShowMobileList] = useState(true);
+
+  const currentMember = useMemo(
+    () => getMemberByEmail(user?.email ?? ""),
+    [user?.email]
+  );
+
+  const currentUserId = currentMember?.id ?? "admin";
 
   const handleSelect = useCallback(() => {
     setChatOpen(true);
@@ -30,13 +38,19 @@ export default function MessagesPage() {
       isDeleted: false,
     };
     setMsgs((prev) => [...prev, msg]);
-  }, []);
+  }, [currentUserId]);
 
   const handleDelete = useCallback((msgId: string) => {
     setMsgs((prev) =>
-      prev.map((m) => (m.id === msgId ? { ...m, isDeleted: true } : m))
+      prev.map((m) => (m.id === msgId && m.senderId === currentUserId ? { ...m, isDeleted: true } : m))
     );
-  }, []);
+  }, [currentUserId]);
+
+  const handleEdit = useCallback((msgId: string, text: string) => {
+    setMsgs((prev) =>
+      prev.map((m) => (m.id === msgId && m.senderId === currentUserId ? { ...m, text, isEdited: true } : m))
+    );
+  }, [currentUserId]);
 
   const handleBack = useCallback(() => {
     setShowMobileList(true);
@@ -53,8 +67,9 @@ export default function MessagesPage() {
         )}
       >
         <ConversationList
-          workspace={workspace}
+          workspace={WORKSPACE}
           selected={chatOpen}
+          currentUserEmail={user?.email ?? ""}
           onSelect={handleSelect}
         />
       </div>
@@ -69,12 +84,12 @@ export default function MessagesPage() {
       >
         {chatOpen ? (
           <ChatWindow
-            workspace={workspace}
+            workspace={WORKSPACE}
             messages={msgs}
             currentUserId={currentUserId}
-            members={teamMembers}
             onSend={handleSend}
             onDelete={handleDelete}
+            onEdit={handleEdit}
             onBack={handleBack}
           />
         ) : (

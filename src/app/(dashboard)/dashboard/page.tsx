@@ -448,8 +448,8 @@ export default function DashboardPage() {
           <CardContent>
             <p className="mb-4 text-sm font-semibold text-[#0F172A]">{calendarLabel}</p>
             <div className="grid grid-cols-7 gap-0.5 text-center text-xs text-[#94A3B8]">
-              {["S", "M", "T", "W", "T", "F", "S"].map((d) => (
-                <span key={d} className="py-1 text-[11px] font-medium">{d}</span>
+              {["S", "M", "T", "W", "T", "F", "S"].map((d, i) => (
+                <span key={`${d}-${i}`} className="py-1 text-[11px] font-medium">{d}</span>
               ))}
             </div>
             <div className="mt-0.5 grid grid-cols-7 gap-0.5">
