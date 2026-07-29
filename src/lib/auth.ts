@@ -4,6 +4,7 @@ import { verifyAccessToken, verifyRefreshToken, signAccessToken } from "@/lib/jw
 import { ACCESS_COOKIE, REFRESH_COOKIE } from "@/lib/cookies";
 import type { AuthUser } from "@/types/auth";
 import { hasPermission, type Permission } from "@/types/permissions";
+import { isAuthorizedEmail } from "@/lib/authorized-users";
 
 export async function getSession(): Promise<AuthUser | null> {
   const cookieStore = await cookies();
@@ -17,7 +18,7 @@ export async function getSession(): Promise<AuthUser | null> {
         where: { id: payload.sub },
         select: { id: true, fullName: true, email: true, role: true, profilePhoto: true, isActive: true }
       });
-      if (!user || !user.isActive) return null;
+      if (!user || !user.isActive || !isAuthorizedEmail(user.email)) return null;
       return {
         id: user.id,
         email: user.email,
@@ -37,7 +38,7 @@ export async function getSession(): Promise<AuthUser | null> {
         where: { id: payload.sub },
         select: { id: true, fullName: true, email: true, role: true, profilePhoto: true, isActive: true }
       });
-      if (!user || !user.isActive) return null;
+      if (!user || !user.isActive || !isAuthorizedEmail(user.email)) return null;
       return {
         id: user.id,
         email: user.email,

@@ -172,6 +172,7 @@ model User {
   refreshTokens     RefreshToken[]
   sessions          Session[]
   otps              Otp[]
+  chatMessages      ChatMessage[]
 
   @@index([role, createdAt])
   @@map("users")
@@ -577,4 +578,42 @@ model Otp {
 
   @@index([userId, purpose])
   @@map("otps")
+}
+
+model ChatMessage {
+  id                String   @id @default(cuid())
+  workspaceId       String   @default("lexcore-solutions")
+  senderId          String?
+  sender            User?    @relation(fields: [senderId], references: [id], onDelete: SetNull)
+  senderName        String
+  senderEmail       String
+  text              String   @default("")
+  status            String   @default("sent")
+  isEdited          Boolean  @default(false)
+  isDeleted         Boolean  @default(false)
+  replyToId         String?
+  replyToText       String?
+  replyToSenderName String?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+  attachments       ChatAttachment[]
+
+  @@index([workspaceId, createdAt])
+  @@index([senderEmail, createdAt])
+  @@map("chat_messages")
+}
+
+model ChatAttachment {
+  id        String      @id @default(cuid())
+  messageId String
+  message   ChatMessage @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  type      String
+  url       String
+  name      String
+  size      Int         @default(0)
+  mime      String      @default("")
+  createdAt DateTime    @default(now())
+
+  @@index([messageId])
+  @@map("chat_attachments")
 }

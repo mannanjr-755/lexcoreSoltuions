@@ -14,6 +14,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { isAuthorizedEmail } from "@/lib/authorized-users";
 
 const loginSchema = z.object({
   email: z.string().trim().min(1, "Email is required").email("Enter a valid email"),
@@ -33,7 +34,7 @@ function getSafeRedirect(raw: string | null) {
 export default function LoginPage() {
   const searchParams = useSearchParams();
   const [showPassword, setShowPassword] = useState(false);
-  const [error, setError] = useState("");
+  const [error, setError] = useState(searchParams.get("error") ?? "");
   const [loading, setLoading] = useState(false);
 
   const {
@@ -50,12 +51,18 @@ export default function LoginPage() {
   });
 
   const onSubmit = async (data: LoginForm) => {
+    const normalizedEmail = data.email.trim().toLowerCase();
+    if (!isAuthorizedEmail(normalizedEmail)) {
+      setError("Access Denied. You are not authorized to access this dashboard.");
+      return;
+    }
+
     setLoading(true);
     setError("");
 
     try {
       const response = await api.post("/api/auth/login", {
-        email: data.email.trim().toLowerCase(),
+        email: normalizedEmail,
         password: data.password,
         rememberMe: Boolean(data.rememberMe)
       });

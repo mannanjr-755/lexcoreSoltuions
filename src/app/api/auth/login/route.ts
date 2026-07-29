@@ -11,6 +11,7 @@ import { ensureSuperAdmin } from "@/lib/ensure-admin";
 import { LOGIN_LOCK_DURATION_MS, LOGIN_LOCK_THRESHOLD, isAuthorizedEmail } from "@/types/auth";
 import { logger } from "@/lib/logger";
 import { assertAuthEnv, getRawDatabaseUrl, assertValidDatabaseUrl } from "@/lib/database-url";
+import { ensureAuthorizedUsers } from "@/lib/ensure-authorized-users";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -61,6 +62,7 @@ export async function POST(req: Request) {
     assertAuthEnv();
 
     await ensureSuperAdmin();
+    await ensureAuthorizedUsers();
 
     const email = parsed.data.email.toLowerCase();
     const user = await prisma.user.findUnique({ where: { email } });
@@ -80,7 +82,10 @@ export async function POST(req: Request) {
         failureReason: "Email not in authorized list"
         }
       });
-      return NextResponse.json({ message: "Access denied. Your email is not authorized." }, { status: 403 });
+      return NextResponse.json(
+        { message: "Access Denied. You are not authorized to access this dashboard." },
+        { status: 403 }
+      );
     }
 
     if (!user.isActive) {

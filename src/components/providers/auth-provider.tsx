@@ -5,6 +5,7 @@ import { usePathname, useRouter } from "next/navigation";
 import api from "@/lib/axios";
 import type { AuthUser } from "@/types/auth";
 import { PageLoading } from "@/components/ui/skeleton";
+import { isAuthorizedEmail } from "@/lib/authorized-users";
 
 interface AuthContextType {
   user: AuthUser | null;
@@ -49,9 +50,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const refresh = useCallback(async () => {
     try {
       const res = await api.get("/api/auth/me");
+      const email = String(res.data.user.email ?? "").toLowerCase();
+      if (!isAuthorizedEmail(email)) {
+        setUser(null);
+        window.location.assign("/login?error=Access%20Denied.%20You%20are%20not%20authorized%20to%20access%20this%20dashboard.");
+        return;
+      }
       setUser({
         id: res.data.user.id,
-        email: res.data.user.email,
+        email,
         role: res.data.user.role,
         fullName: res.data.user.fullName,
         profilePhoto: res.data.user.profilePhoto

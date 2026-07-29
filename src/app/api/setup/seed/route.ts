@@ -5,6 +5,7 @@ import { getSystemSettings } from "@/services/settings.service";
 import { prisma } from "@/lib/prisma";
 import { handleApiError } from "@/lib/api-error";
 import { ensureDatabaseSchema } from "@/lib/ensure-database";
+import { ensureAuthorizedUsers } from "@/lib/ensure-authorized-users";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -19,6 +20,7 @@ export async function POST() {
     await ensureDatabaseSchema();
 
     const admin = await ensureSuperAdmin();
+    await ensureAuthorizedUsers();
     await ensureStaffEmployees();
     await getSystemSettings();
 

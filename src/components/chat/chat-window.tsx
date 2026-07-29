@@ -6,14 +6,17 @@ import { motion, AnimatePresence } from "framer-motion";
 import type { Message, TeamMember, Workspace } from "./chat-types";
 import { ChatBubble } from "./chat-bubble";
 import { ChatInput } from "./chat-input";
-import { TypingIndicator } from "./typing-indicator";
 import { cn } from "@/lib/utils";
+import type { Attachment } from "./chat-types";
 
 interface ChatWindowProps {
   workspace: Workspace;
   messages: Message[];
   currentUserId: string;
-  onSend: (text: string) => void;
+  isAdmin: boolean;
+  onSend: (payload: { text: string; attachments: Attachment[]; replyToId?: string | null }) => void;
+  onTypingChange?: (isTyping: boolean) => void;
+  typingUsers?: string[];
   onDelete: (id: string) => void;
   onEdit: (id: string, text: string) => void;
   onBack?: () => void;
@@ -32,7 +35,7 @@ function formatDateSeparator(ts: string) {
 function groupByDate(msgs: Message[]) {
   const groups: { date: string; messages: Message[] }[] = [];
   for (const msg of msgs) {
-    const dateKey = new Date(msg.timestamp).toDateString();
+    const dateKey = new Date(msg.createdAt).toDateString();
     const last = groups[groups.length - 1];
     if (last && last.date === dateKey) {
       last.messages.push(msg);
@@ -43,7 +46,7 @@ function groupByDate(msgs: Message[]) {
   return groups;
 }
 
-export function ChatWindow({ workspace, messages, currentUserId, onSend, onDelete, onEdit, onBack }: ChatWindowProps) {
+export function ChatWindow({ workspace, messages, currentUserId, isAdmin, onSend, onTypingChange, typingUsers = [], onDelete, onEdit, onBack }: ChatWindowProps) {
   const [replyTo, setReplyTo] = useState<Message | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [showSearch, setShowSearch] = useState(false);
@@ -76,10 +79,16 @@ export function ChatWindow({ workspace, messages, currentUserId, onSend, onDelet
     setReplyTo(msg);
   }, []);
 
-  const handleSend = useCallback((text: string) => {
-    setReplyTo(null);
-    onSend(text);
-  }, [onSend]);
+  const handleSend = useCallback(
+    (payload: { text: string; attachments: Attachment[] }) => {
+      onSend({
+        ...payload,
+        replyToId: replyTo?.id ?? null
+      });
+      setReplyTo(null);
+    },
+    [onSend, replyTo]
+  );
 
   const handleCopy = useCallback((text: string) => {
     navigator.clipboard.writeText(text);
@@ -162,7 +171,7 @@ export function ChatWindow({ workspace, messages, currentUserId, onSend, onDelet
             <div key={group.date}>
               <div className="sticky top-0 z-10 flex justify-center py-3">
                 <span className="rounded-full bg-white px-3 py-1 text-[11px] font-medium text-[#64748B] shadow-sm">
-                  {formatDateSeparator(group.messages[0].timestamp)}
+                  {formatDateSeparator(group.messages[0].createdAt)}
                 </span>
               </div>
               <div className="space-y-1.5">
@@ -183,6 +192,8 @@ export function ChatWindow({ workspace, messages, currentUserId, onSend, onDelet
                           message={msg}
                           sender={sender}
                           isOwn={msg.senderId === currentUserId}
+                          canEdit={msg.senderId === currentUserId}
+                          canDelete={isAdmin || msg.senderId === currentUserId}
                           showHeader={showHeader}
                           onDelete={onDelete}
                           onEdit={onEdit}
@@ -197,12 +208,18 @@ export function ChatWindow({ workspace, messages, currentUserId, onSend, onDelet
             </div>
           ))
         )}
+        {typingUsers.length > 0 ? (
+          <div className="mt-3 text-xs text-[#64748B]">
+            {typingUsers.join(", ")} {typingUsers.length > 1 ? "are" : "is"} typing...
+          </div>
+        ) : null}
         <div ref={bottomRef} />
       </div>
 
       {/* Input */}
       <ChatInput
         onSend={handleSend}
+        onTypingChange={onTypingChange}
         replyTo={replyTo ? { text: replyTo.text, senderName: memberMap[replyTo.senderId]?.name ?? "Unknown" } : null}
         onCancelReply={() => setReplyTo(null)}
       />

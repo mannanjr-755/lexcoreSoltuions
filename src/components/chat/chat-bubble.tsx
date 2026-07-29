@@ -8,6 +8,8 @@ interface ChatBubbleProps {
   message: Message;
   sender: TeamMember;
   isOwn: boolean;
+  canEdit: boolean;
+  canDelete: boolean;
   showHeader: boolean;
   onDelete?: (id: string) => void;
   onEdit?: (id: string, text: string) => void;
@@ -15,7 +17,7 @@ interface ChatBubbleProps {
   onCopy?: (text: string) => void;
 }
 
-export function ChatBubble({ message, sender, isOwn, showHeader, onDelete, onEdit, onReply, onCopy }: ChatBubbleProps) {
+export function ChatBubble({ message, sender, isOwn, canEdit, canDelete, showHeader, onDelete, onEdit, onReply, onCopy }: ChatBubbleProps) {
   const [menuOpen, setMenuOpen] = useState(false);
   const [editing, setEditing] = useState(false);
   const [editText, setEditText] = useState(message.text);
@@ -30,17 +32,7 @@ export function ChatBubble({ message, sender, isOwn, showHeader, onDelete, onEdi
     return () => document.removeEventListener("mousedown", handleClick);
   }, [menuOpen]);
 
-  if (message.isDeleted) {
-    return (
-      <div className={cn("flex", isOwn ? "justify-end" : "justify-start")}>
-        <div className="rounded-[12px] bg-[#F1F5F9] px-4 py-2 text-xs italic text-[#94A3B8]">
-          Message deleted
-        </div>
-      </div>
-    );
-  }
-
-  const timeStr = new Date(message.timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  const timeStr = new Date(message.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
 
   const handleSaveEdit = () => {
     if (editText.trim() && editText !== message.text) {
@@ -77,15 +69,15 @@ export function ChatBubble({ message, sender, isOwn, showHeader, onDelete, onEdi
         )}
 
         {/* Reply preview */}
-        {message.replyTo && (
+        {message.replyToText && (
           <div
             className={cn(
               "mb-1 rounded-[8px] border-l-2 px-3 py-1.5 text-xs",
               isOwn ? "border-white/40 bg-white/10" : "border-[#94A3B8] bg-[#F8FAFC]"
             )}
           >
-            <p className="font-medium text-[#0F172A]">{message.replyTo.senderName}</p>
-            <p className="truncate text-[#64748B]">{message.replyTo.text}</p>
+            <p className="font-medium text-[#0F172A]">{message.replyToSenderName}</p>
+            <p className="truncate text-[#64748B]">{message.replyToText}</p>
           </div>
         )}
 
@@ -115,24 +107,32 @@ export function ChatBubble({ message, sender, isOwn, showHeader, onDelete, onEdi
                   : "bg-[#F1F5F9] text-[#0F172A] rounded-bl-[4px]"
               )}
             >
-              {message.media?.type === "image" && (
-                <div className="mb-2 overflow-hidden rounded-[8px]">
-                  <div className="flex aspect-video items-center justify-center bg-[#E2E8F0] text-xs text-[#64748B]">
-                    [Image: {message.media.name}]
-                  </div>
+              {message.attachments.filter((a) => a.type === "image").map((image) => (
+                <div key={image.id} className="mb-2 overflow-hidden rounded-[8px]">
+                  <a href={image.url} target="_blank" rel="noreferrer">
+                    <img
+                      src={image.url}
+                      alt={image.name}
+                      className="max-h-56 w-full rounded-[8px] object-cover"
+                      loading="lazy"
+                    />
+                  </a>
                 </div>
-              )}
-              {message.media?.type === "file" && (
-                <div className={cn("mb-2 flex items-center gap-2 rounded-[8px] border px-3 py-2 text-xs", isOwn ? "border-white/20" : "border-[#E2E8F0]")}>
+              ))}
+              {message.attachments.filter((a) => a.type === "file").map((file) => (
+                <div key={file.id} className={cn("mb-2 flex items-center gap-2 rounded-[8px] border px-3 py-2 text-xs", isOwn ? "border-white/20" : "border-[#E2E8F0]")}>
                   <span className="text-base">📎</span>
                   <div className="min-w-0 flex-1">
-                    <p className="truncate font-medium">{message.media.name}</p>
-                    {message.media.size && (
-                      <p className="opacity-70">{(message.media.size / 1024 / 1024).toFixed(1)} MB</p>
+                    <p className="truncate font-medium">{file.name}</p>
+                    {file.size && (
+                      <p className="opacity-70">{(file.size / 1024 / 1024).toFixed(1)} MB</p>
                     )}
                   </div>
+                  <a href={file.url} download className={cn("rounded px-2 py-1 text-[10px] font-medium", isOwn ? "bg-white/20" : "bg-[#E2E8F0]")}>
+                    Download
+                  </a>
                 </div>
-              )}
+              ))}
 
               <p className="whitespace-pre-wrap break-words">{message.text}</p>
 
@@ -177,7 +177,7 @@ export function ChatBubble({ message, sender, isOwn, showHeader, onDelete, onEdi
                     >
                       📋 Copy
                     </button>
-                    {isOwn && (
+                    {canEdit && (
                       <button
                         onClick={() => { setEditing(true); setMenuOpen(false); }}
                         className="flex w-full items-center gap-2 rounded-[6px] px-3 py-2 text-xs text-[#0F172A] hover:bg-[#F1F5F9]"
@@ -185,7 +185,7 @@ export function ChatBubble({ message, sender, isOwn, showHeader, onDelete, onEdi
                         ✏️ Edit
                       </button>
                     )}
-                    {isOwn && (
+                    {canDelete && (
                       <button
                         onClick={() => { onDelete?.(message.id); setMenuOpen(false); }}
                         className="flex w-full items-center gap-2 rounded-[6px] px-3 py-2 text-xs text-red-500 hover:bg-red-50"

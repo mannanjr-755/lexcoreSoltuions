@@ -7,16 +7,30 @@ export interface TeamMember {
   isOnline: boolean;
 }
 
+export interface Attachment {
+  id: string;
+  type: "image" | "file";
+  url: string;
+  name: string;
+  size: number;
+  mime: string;
+}
+
 export interface Message {
   id: string;
   senderId: string;
+  senderName: string;
+  senderEmail: string;
   text: string;
-  timestamp: string;
+  createdAt: string;
+  updatedAt: string;
   status: "sent" | "delivered" | "read";
   isEdited: boolean;
   isDeleted: boolean;
-  replyTo?: { id: string; text: string; senderName: string };
-  media?: { type: "image" | "file"; url: string; name: string; size?: number };
+  replyToId?: string | null;
+  replyToText?: string | null;
+  replyToSenderName?: string | null;
+  attachments: Attachment[];
 }
 
 export interface Workspace {

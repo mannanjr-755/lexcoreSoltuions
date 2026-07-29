@@ -6,6 +6,7 @@ import { handleApiError, unauthorized } from "@/lib/api-error";
 import { REFRESH_COOKIE } from "@/lib/cookies";
 import { verifyRefreshToken, signAccessToken } from "@/lib/jwt";
 import { setAuthCookies } from "@/lib/cookies";
+import { isAuthorizedEmail } from "@/lib/authorized-users";
 
 export async function GET() {
   try {
@@ -19,7 +20,7 @@ export async function GET() {
         company: true, designation: true, address: true, lastLoginAt: true, lastLoginIp: true, createdAt: true
       }
     });
-    if (!user) return unauthorized();
+    if (!user || !isAuthorizedEmail(user.email)) return unauthorized();
 
     return NextResponse.json({
       user: {
@@ -49,6 +50,7 @@ export async function POST() {
     if (!refreshToken) return unauthorized();
 
     const payload = verifyRefreshToken(refreshToken);
+    if (!isAuthorizedEmail(payload.email)) return unauthorized();
     const newAccess = signAccessToken({ sub: payload.sub, role: payload.role, email: payload.email });
 
     const response = NextResponse.json({ message: "Token refreshed" });

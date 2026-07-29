@@ -4,6 +4,17 @@ import { Prisma } from "@prisma/client";
 import { logger } from "@/lib/logger";
 import { DatabaseNotReadyError } from "@/lib/ensure-database";
 
+export class HttpError extends Error {
+  constructor(
+    public status: number,
+    message: string,
+    public details?: Record<string, unknown>
+  ) {
+    super(message);
+    this.name = "HttpError";
+  }
+}
+
 export function handleApiError(error: unknown) {
   if (error instanceof ZodError) {
     const first = error.issues[0];
@@ -57,6 +68,14 @@ export function handleApiError(error: unknown) {
   }
 
   if (error instanceof Error) {
+    if (error instanceof HttpError) {
+      if (error.status >= 500) {
+        logger.error(error.message, { status: error.status, ...error.details });
+      } else {
+        logger.warn(error.message, { status: error.status, ...error.details });
+      }
+      return NextResponse.json({ message: error.message }, { status: error.status });
+    }
     if (error.message === "Unauthorized") {
       return NextResponse.json({ message: "Unauthorized" }, { status: 401 });
     }
@@ -100,4 +119,8 @@ export function unauthorized() {
 
 export function forbidden() {
   return NextResponse.json({ message: "Forbidden" }, { status: 403 });
+}
+
+export function badRequest(message: string) {
+  return NextResponse.json({ message }, { status: 400 });
 }

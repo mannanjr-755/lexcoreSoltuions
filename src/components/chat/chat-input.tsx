@@ -1,11 +1,13 @@
 "use client";
 
-import { useState, useRef, useEffect, useCallback } from "react";
+import { useState, useRef, useEffect, useCallback, type ChangeEvent } from "react";
 import { Send, Paperclip, Smile, Image as ImageIcon } from "lucide-react";
-import { cn } from "@/lib/utils";
+import api from "@/lib/axios";
+import type { Attachment } from "./chat-types";
 
 interface ChatInputProps {
-  onSend: (text: string) => void;
+  onSend: (payload: { text: string; attachments: Attachment[] }) => void;
+  onTypingChange?: (isTyping: boolean) => void;
   replyTo?: { text: string; senderName: string } | null;
   onCancelReply?: () => void;
 }
@@ -18,11 +20,18 @@ const EMOJI_LIST = [
   "✅","❌","❓","❗","💡","📌","🎯","💻","📱","💼","📁","🔑","⚙️","📊","📈"
 ];
 
-export function ChatInput({ onSend, replyTo, onCancelReply }: ChatInputProps) {
+export function ChatInput({ onSend, onTypingChange, replyTo, onCancelReply }: ChatInputProps) {
   const [text, setText] = useState("");
   const [showEmoji, setShowEmoji] = useState(false);
+  const [attachments, setAttachments] = useState<Attachment[]>([]);
+  const [uploading, setUploading] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState(0);
+  const [uploadError, setUploadError] = useState("");
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const emojiRef = useRef<HTMLDivElement>(null);
+  const imageInputRef = useRef<HTMLInputElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const typingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     if (textareaRef.current) {
@@ -41,11 +50,13 @@ export function ChatInput({ onSend, replyTo, onCancelReply }: ChatInputProps) {
   }, [showEmoji]);
 
   const handleSend = useCallback(() => {
-    if (!text.trim()) return;
-    onSend(text.trim());
+    if (!text.trim() && attachments.length === 0) return;
+    onSend({ text: text.trim(), attachments });
+    onTypingChange?.(false);
     setText("");
+    setAttachments([]);
     textareaRef.current?.focus();
-  }, [text, onSend]);
+  }, [attachments, text, onSend, onTypingChange]);
 
   const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
     if (e.key === "Enter" && !e.shiftKey) {
@@ -59,6 +70,67 @@ export function ChatInput({ onSend, replyTo, onCancelReply }: ChatInputProps) {
     textareaRef.current?.focus();
   }, []);
 
+  useEffect(() => {
+    if (!onTypingChange) return;
+    if (text.trim().length === 0) {
+      onTypingChange(false);
+      if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
+      return;
+    }
+
+    onTypingChange(true);
+    if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
+    typingTimeoutRef.current = setTimeout(() => {
+      onTypingChange(false);
+    }, 1400);
+
+    return () => {
+      if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
+    };
+  }, [onTypingChange, text]);
+
+  const uploadFile = useCallback(async (file: File) => {
+    setUploadError("");
+    setUploading(true);
+    setUploadProgress(0);
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+      const response = await api.post("/api/messages/upload", formData, {
+        headers: { "Content-Type": "multipart/form-data" },
+        onUploadProgress: (event) => {
+          if (!event.total) return;
+          setUploadProgress(Math.round((event.loaded / event.total) * 100));
+        }
+      });
+      const attachment = response.data.attachment as Attachment;
+      setAttachments((prev) => [...prev, attachment]);
+    } catch (error: unknown) {
+      const message =
+        typeof error === "object" && error && "response" in error
+          ? String((error as { response?: { data?: { message?: string } } }).response?.data?.message ?? "Upload failed.")
+          : "Upload failed.";
+      setUploadError(message);
+    } finally {
+      setUploadProgress(0);
+      setUploading(false);
+    }
+  }, []);
+
+  const handleImageSelect = useCallback(async (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    await uploadFile(file);
+    event.target.value = "";
+  }, [uploadFile]);
+
+  const handleFileSelect = useCallback(async (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    await uploadFile(file);
+    event.target.value = "";
+  }, [uploadFile]);
+
   return (
     <div className="border-t border-[#E2E8F0] bg-white px-4 py-3">
       {replyTo && (
@@ -68,6 +140,25 @@ export function ChatInput({ onSend, replyTo, onCancelReply }: ChatInputProps) {
             <p className="truncate text-[#64748B]">{replyTo.text}</p>
           </div>
           <button onClick={onCancelReply} className="shrink-0 text-[#94A3B8] hover:text-[#0F172A]">✕</button>
+        </div>
+      )}
+      {uploadError ? <p className="mb-2 text-xs text-red-500">{uploadError}</p> : null}
+      {uploading ? <p className="mb-2 text-xs text-[#64748B]">Uploading... {uploadProgress}%</p> : null}
+      {attachments.length > 0 && (
+        <div className="mb-2 flex flex-wrap gap-2">
+          {attachments.map((file) => (
+            <div key={file.id} className="flex items-center gap-2 rounded-full border border-[#E2E8F0] bg-[#F8FAFC] px-3 py-1 text-xs">
+              <span>{file.type === "image" ? "🖼️" : "📎"}</span>
+              <span className="max-w-[180px] truncate">{file.name}</span>
+              <button
+                type="button"
+                onClick={() => setAttachments((prev) => prev.filter((item) => item.id !== file.id))}
+                className="text-[#94A3B8] hover:text-[#0F172A]"
+              >
+                ✕
+              </button>
+            </div>
+          ))}
         </div>
       )}
 
@@ -110,6 +201,7 @@ export function ChatInput({ onSend, replyTo, onCancelReply }: ChatInputProps) {
             </div>
             <button
               type="button"
+              onClick={() => imageInputRef.current?.click()}
               className="flex h-7 w-7 items-center justify-center rounded-[6px] text-[#94A3B8] hover:bg-[#F1F5F9] hover:text-[#0F172A]"
               title="Attach image"
             >
@@ -117,6 +209,7 @@ export function ChatInput({ onSend, replyTo, onCancelReply }: ChatInputProps) {
             </button>
             <button
               type="button"
+              onClick={() => fileInputRef.current?.click()}
               className="flex h-7 w-7 items-center justify-center rounded-[6px] text-[#94A3B8] hover:bg-[#F1F5F9] hover:text-[#0F172A]"
               title="Attach file"
             >
@@ -127,12 +220,26 @@ export function ChatInput({ onSend, replyTo, onCancelReply }: ChatInputProps) {
         <button
           type="button"
           onClick={handleSend}
-          disabled={!text.trim()}
+          disabled={(!text.trim() && attachments.length === 0) || uploading}
           className="flex h-[42px] w-[42px] shrink-0 items-center justify-center rounded-[12px] bg-[#2563EB] text-white transition-all duration-200 hover:bg-[#1D4ED8] disabled:opacity-40 disabled:hover:bg-[#2563EB]"
         >
           <Send className="size-[18px]" />
         </button>
       </div>
+      <input
+        ref={imageInputRef}
+        type="file"
+        accept="image/jpeg,image/jpg,image/png,image/webp"
+        className="hidden"
+        onChange={handleImageSelect}
+      />
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept=".pdf,.doc,.docx,.xlsx,.zip,.txt"
+        className="hidden"
+        onChange={handleFileSelect}
+      />
     </div>
   );
 }
