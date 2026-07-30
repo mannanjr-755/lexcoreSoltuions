@@ -65,10 +65,11 @@ export function handleApiError(error: unknown) {
       return NextResponse.json({ message: "Record not found" }, { status: 404 });
     }
     if (error.code === "P2021") {
+      const table = String((error.meta as { table?: string } | undefined)?.table ?? "unknown");
+      logDbError("Table does not exist in database", error);
       return NextResponse.json(
         {
-          message:
-            "Database schema is missing (public.users not found). Set NETLIFY_RUN_MIGRATIONS=true and redeploy, or POST /api/setup/seed."
+          message: `Database schema is missing (table: ${table}). Set NETLIFY_RUN_MIGRATIONS=true and redeploy, or POST /api/setup/seed.`
         },
         { status: 503 }
       );
@@ -104,6 +105,16 @@ export function handleApiError(error: unknown) {
         { status: 400 }
       );
     }
+    if (error.code === "P2022") {
+      const column = String((error.meta as { column?: string } | undefined)?.column ?? "unknown");
+      logDbError("Column does not exist in database", error);
+      return NextResponse.json(
+        {
+          message: `Database schema is out of date (missing column: ${column}). Run migrations or redeploy with NETLIFY_RUN_MIGRATIONS=true.`
+        },
+        { status: 503 }
+      );
+    }
     if (error.code === "P2000") {
       logDbError("Value too long for column", error);
       return NextResponse.json(
@@ -112,8 +123,22 @@ export function handleApiError(error: unknown) {
       );
     }
     logDbError("Prisma known request error", error);
+    const code = error.code;
+    const column =
+      typeof error.meta === "object" && error.meta && "column" in error.meta
+        ? String((error.meta as { column?: string }).column)
+        : undefined;
+    const table =
+      typeof error.meta === "object" && error.meta && "table" in error.meta
+        ? String((error.meta as { table?: string }).table)
+        : undefined;
+    const detail = [code, table && `table=${table}`, column && `column=${column}`]
+      .filter(Boolean)
+      .join(" · ");
     return NextResponse.json(
-      { message: "A database error occurred while processing your request." },
+      {
+        message: `Database request failed${detail ? ` (${detail})` : ""}. Please try again or contact support.`
+      },
       { status: 500 }
     );
   }

@@ -15,7 +15,7 @@ import path from "node:path";
 export type MessageAttachmentType = "image" | "file";
 
 export type MessageAttachment = {
-  id: string;
+  id?: string;
   type: MessageAttachmentType;
   url: string;
   name: string;
@@ -52,6 +52,76 @@ const WORKSPACE_ID = "lexcore-solutions";
 const ADMIN_EMAIL = "admin@lexcore.com";
 
 let seedPromise: Promise<void> | null = null;
+let schemaPromise: Promise<void> | null = null;
+
+/**
+ * Ensures chat tables match Prisma field maps (snake_case) and sender_id is nullable.
+ * Safe to call repeatedly; runs once per process.
+ */
+export async function ensureChatSchema() {
+  if (!schemaPromise) {
+    schemaPromise = (async () => {
+      try {
+        await prisma.$executeRawUnsafe(`
+          CREATE TABLE IF NOT EXISTS "chat_messages" (
+            "id" TEXT PRIMARY KEY,
+            "workspace_id" TEXT NOT NULL DEFAULT 'lexcore-solutions',
+            "sender_id" TEXT,
+            "sender_name" TEXT NOT NULL,
+            "sender_email" TEXT NOT NULL,
+            "text" TEXT NOT NULL DEFAULT '',
+            "status" TEXT NOT NULL DEFAULT 'sent',
+            "is_edited" BOOLEAN NOT NULL DEFAULT false,
+            "is_deleted" BOOLEAN NOT NULL DEFAULT false,
+            "reply_to_id" TEXT,
+            "reply_to_text" TEXT,
+            "reply_to_sender_name" TEXT,
+            "created_at" TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            "updated_at" TIMESTAMPTZ NOT NULL DEFAULT NOW()
+          )
+        `);
+        await prisma.$executeRawUnsafe(`
+          CREATE TABLE IF NOT EXISTS "chat_attachments" (
+            "id" TEXT PRIMARY KEY,
+            "message_id" TEXT NOT NULL,
+            "type" TEXT NOT NULL,
+            "url" TEXT NOT NULL,
+            "name" TEXT NOT NULL,
+            "size" INTEGER NOT NULL DEFAULT 0,
+            "mime" TEXT NOT NULL DEFAULT '',
+            "created_at" TIMESTAMPTZ NOT NULL DEFAULT NOW()
+          )
+        `);
+        await prisma.$executeRawUnsafe(`ALTER TABLE "chat_messages" ALTER COLUMN "sender_id" DROP NOT NULL`);
+        await prisma.$executeRawUnsafe(`
+          UPDATE "chat_messages" AS m
+          SET "sender_id" = NULL
+          WHERE m."sender_id" IS NOT NULL
+            AND NOT EXISTS (SELECT 1 FROM "users" u WHERE u."id" = m."sender_id")
+        `);
+        await prisma.$executeRawUnsafe(`
+          CREATE INDEX IF NOT EXISTS "chat_messages_workspace_id_created_at_idx"
+          ON "chat_messages" ("workspace_id", "created_at")
+        `);
+        await prisma.$executeRawUnsafe(`
+          CREATE INDEX IF NOT EXISTS "chat_messages_sender_email_created_at_idx"
+          ON "chat_messages" ("sender_email", "created_at")
+        `);
+        await prisma.$executeRawUnsafe(`
+          CREATE INDEX IF NOT EXISTS "chat_attachments_message_id_idx"
+          ON "chat_attachments" ("message_id")
+        `);
+      } catch (error) {
+        schemaPromise = null;
+        logger.warn("Chat schema reconcile skipped", {
+          message: error instanceof Error ? error.message : String(error)
+        });
+        // Do not hard-fail chat if DDL reconcile is blocked; Prisma queries will surface real errors.
+      }
+    })();
+  }
+  await schemaPromise;
+}
 
 function mapAttachment(attachment: {
   id: string;
@@ -116,6 +186,8 @@ function mapMessage(row: {
 }
 
 async function seedIfEmpty() {
+  await ensureChatSchema();
+
   if (seedPromise) {
     await seedPromise;
     return;
@@ -169,6 +241,8 @@ export async function listAllMessages() {
 }
 
 export async function createMessage(input: CreateMessageInput): Promise<TeamMessage> {
+  await ensureChatSchema();
+
   const email = normalizeEmail(input.senderEmail);
   const member = getAuthorizedUserByEmail(email);
   if (!member) {
@@ -226,12 +300,12 @@ export async function createMessage(input: CreateMessageInput): Promise<TeamMess
       attachments: safeAttachments.length
         ? {
             create: safeAttachments.map((attachment) => ({
-              id: attachment.id || undefined,
+              ...(attachment.id ? { id: attachment.id } : {}),
               type: attachment.type,
               url: attachment.url,
               name: attachment.name,
-              size: Math.max(0, Number(attachment.size || 0)),
-              mime: attachment.mime
+              size: Math.max(0, Math.min(Number(attachment.size || 0), 2147483647)),
+              mime: attachment.mime || ""
             }))
           }
         : undefined
@@ -245,6 +319,7 @@ export async function createMessage(input: CreateMessageInput): Promise<TeamMess
 }
 
 export async function editMessage(id: string, email: string, text: string) {
+  await ensureChatSchema();
   const normalized = normalizeEmail(email);
   const existing = await prisma.chatMessage.findUnique({
     where: { id },
@@ -261,6 +336,7 @@ export async function editMessage(id: string, email: string, text: string) {
 }
 
 export async function deleteMessage(id: string, email: string) {
+  await ensureChatSchema();
   const normalized = normalizeEmail(email);
   const isAdmin = normalized === ADMIN_EMAIL;
   const existing = await prisma.chatMessage.findUnique({
@@ -281,6 +357,7 @@ export async function deleteMessage(id: string, email: string) {
 }
 
 export async function clearAllMessages(email: string) {
+  await ensureChatSchema();
   const normalized = normalizeEmail(email);
   if (normalized !== ADMIN_EMAIL) {
     throw new HttpError(403, "Only Admin can clear the chat history.");

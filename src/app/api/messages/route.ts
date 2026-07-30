@@ -11,12 +11,12 @@ const createMessageSchema = z.object({
   attachments: z
     .array(
       z.object({
-        id: z.string(),
+        id: z.string().optional(),
         type: z.enum(["image", "file"]),
-        url: z.string(),
-        name: z.string(),
+        url: z.string().min(1),
+        name: z.string().min(1),
         size: z.number().nonnegative(),
-        mime: z.string()
+        mime: z.string().optional().default("")
       })
     )
     .max(10)
