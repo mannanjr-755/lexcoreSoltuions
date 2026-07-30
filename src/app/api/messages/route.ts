@@ -3,7 +3,11 @@ import { z } from "zod";
 import { getSession } from "@/lib/auth";
 import { handleApiError, unauthorized } from "@/lib/api-error";
 import { isAuthorizedEmail } from "@/lib/authorized-users";
-import { createMessage, listAllMessages, listWorkspaceMembers } from "@/services/messages.service";
+import {
+  createMessage,
+  listAllMessages,
+  listWorkspaceMembers
+} from "@/services/messages.service";
 
 const createMessageSchema = z.object({
   text: z.string().max(5000).optional().default(""),
@@ -27,17 +31,25 @@ const createMessageSchema = z.object({
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-export async function GET() {
+export async function GET(req: Request) {
   try {
     const session = await getSession();
     if (!session || !isAuthorizedEmail(session.email)) return unauthorized();
 
-    const { messages } = await listAllMessages();
+    const { searchParams } = new URL(req.url);
+    const limit = Number(searchParams.get("limit") ?? "50");
+    const before = searchParams.get("before");
+
+    const { messages, hasMore } = await listAllMessages({
+      limit: Number.isFinite(limit) ? limit : 50,
+      before
+    });
 
     return NextResponse.json({
       workspace: { id: "lexcore-solutions", name: "Lexcore Solutions" },
       members: listWorkspaceMembers(),
-      messages
+      messages,
+      hasMore
     });
   } catch (error) {
     return handleApiError(error);

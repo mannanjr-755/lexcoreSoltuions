@@ -14,6 +14,7 @@ export interface Attachment {
   name: string;
   size: number;
   mime: string;
+  createdAt?: string;
 }
 
 export interface Message {

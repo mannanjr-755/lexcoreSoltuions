@@ -2,8 +2,10 @@ import { prisma } from "@/lib/prisma";
 import { AUTHORIZED_USERS, getAuthorizedUserByEmail, normalizeEmail } from "@/lib/authorized-users";
 import type { Message } from "@/components/chat/chat-types";
 import {
+  getOnlineEmails,
   publishMessageCreated,
   publishMessageDeleted,
+  publishMessageStatus,
   publishMessageUpdated,
   publishMessagesCleared
 } from "@/services/messages-realtime.service";
@@ -37,7 +39,7 @@ export type TeamMessage = {
   replyToSenderName: string | null;
   createdAt: string;
   updatedAt: string;
-  attachments: MessageAttachment[];
+  attachments: Array<Required<MessageAttachment> & { createdAt?: string }>;
 };
 
 type CreateMessageInput = {
@@ -48,15 +50,24 @@ type CreateMessageInput = {
   attachments?: MessageAttachment[];
 };
 
+type ListMessagesParams = {
+  limit?: number;
+  before?: string | null;
+};
+
 const WORKSPACE_ID = "lexcore-solutions";
 const ADMIN_EMAIL = "admin@lexcore.com";
+const DEFAULT_PAGE_SIZE = 50;
+const MAX_PAGE_SIZE = 100;
 
-let seedPromise: Promise<void> | null = null;
 let schemaPromise: Promise<void> | null = null;
+
+export function isChatAdmin(email: string) {
+  return normalizeEmail(email) === ADMIN_EMAIL;
+}
 
 /**
  * Ensures chat tables match Prisma field maps (snake_case) and sender_id is nullable.
- * Safe to call repeatedly; runs once per process.
  */
 export async function ensureChatSchema() {
   if (!schemaPromise) {
@@ -116,7 +127,6 @@ export async function ensureChatSchema() {
         logger.warn("Chat schema reconcile skipped", {
           message: error instanceof Error ? error.message : String(error)
         });
-        // Do not hard-fail chat if DDL reconcile is blocked; Prisma queries will surface real errors.
       }
     })();
   }
@@ -130,14 +140,16 @@ function mapAttachment(attachment: {
   name: string;
   size: number;
   mime: string;
-}): MessageAttachment {
+  createdAt?: Date;
+}): Required<MessageAttachment> & { createdAt?: string } {
   return {
     id: attachment.id,
     type: attachment.type === "image" ? "image" : "file",
     url: attachment.url,
     name: attachment.name,
     size: attachment.size,
-    mime: attachment.mime
+    mime: attachment.mime,
+    ...(attachment.createdAt ? { createdAt: attachment.createdAt.toISOString() } : {})
   };
 }
 
@@ -162,6 +174,7 @@ function mapMessage(row: {
     name: string;
     size: number;
     mime: string;
+    createdAt?: Date;
   }>;
 }): TeamMessage {
   const status =
@@ -185,59 +198,37 @@ function mapMessage(row: {
   };
 }
 
-async function seedIfEmpty() {
+export async function listAllMessages(params: ListMessagesParams = {}) {
   await ensureChatSchema();
 
-  if (seedPromise) {
-    await seedPromise;
-    return;
+  const limit = Math.min(MAX_PAGE_SIZE, Math.max(1, params.limit ?? DEFAULT_PAGE_SIZE));
+  const before = params.before?.trim() || null;
+
+  let beforeCreatedAt: Date | null = null;
+  if (before) {
+    const anchor = await prisma.chatMessage.findUnique({
+      where: { id: before },
+      select: { createdAt: true }
+    });
+    beforeCreatedAt = anchor?.createdAt ?? null;
   }
 
-  seedPromise = (async () => {
-    const count = await prisma.chatMessage.count({ where: { workspaceId: WORKSPACE_ID } });
-    if (count > 0) return;
-
-    const seed = [
-      { senderEmail: "admin@lexcore.com", text: "Hello Team 👋" },
-      { senderEmail: "abdul@lexcore.com", text: "Customer module has been updated." },
-      { senderEmail: "raid@lexcore.com", text: "Invoice system is completed." },
-      { senderEmail: "yousuf@lexcore.com", text: "Testing has started." },
-      { senderEmail: "anjasha@lexcore.com", text: "UI improvements are finished." }
-    ];
-
-    await prisma.$transaction(
-      seed.map((item) => {
-        const member = getAuthorizedUserByEmail(item.senderEmail);
-        return prisma.chatMessage.create({
-          data: {
-            workspaceId: WORKSPACE_ID,
-            senderId: null,
-            senderName: member?.name ?? item.senderEmail,
-            senderEmail: item.senderEmail,
-            text: item.text,
-            status: "read"
-          }
-        });
-      })
-    );
-  })().catch((error) => {
-    seedPromise = null;
-    throw error;
-  });
-
-  await seedPromise;
-}
-
-export async function listAllMessages() {
-  await seedIfEmpty();
-
   const rows = await prisma.chatMessage.findMany({
-    where: { workspaceId: WORKSPACE_ID },
+    where: {
+      workspaceId: WORKSPACE_ID,
+      ...(beforeCreatedAt ? { createdAt: { lt: beforeCreatedAt } } : {})
+    },
     include: { attachments: { orderBy: { createdAt: "asc" } } },
-    orderBy: { createdAt: "asc" }
+    orderBy: { createdAt: "desc" },
+    take: limit + 1
   });
 
-  return { messages: rows.map(mapMessage) };
+  const hasMore = rows.length > limit;
+  const page = hasMore ? rows.slice(0, limit) : rows;
+  // Return chronological order for the UI.
+  const messages = page.reverse().map(mapMessage);
+
+  return { messages, hasMore, limit };
 }
 
 export async function createMessage(input: CreateMessageInput): Promise<TeamMessage> {
@@ -275,7 +266,6 @@ export async function createMessage(input: CreateMessageInput): Promise<TeamMess
     }
   }
 
-  // Prefer real User.id from session; never use slug ids that break FK constraints.
   let senderId: string | null = input.senderUserId ?? null;
   if (senderId) {
     const exists = await prisma.user.findUnique({ where: { id: senderId }, select: { id: true } });
@@ -286,6 +276,9 @@ export async function createMessage(input: CreateMessageInput): Promise<TeamMess
     senderId = dbUser?.id ?? null;
   }
 
+  const othersOnline = getOnlineEmails().some((online) => online !== email);
+  const initialStatus = othersOnline ? "delivered" : "sent";
+
   const created = await prisma.chatMessage.create({
     data: {
       workspaceId: WORKSPACE_ID,
@@ -293,7 +286,7 @@ export async function createMessage(input: CreateMessageInput): Promise<TeamMess
       senderName: member.name,
       senderEmail: member.email,
       text,
-      status: "sent",
+      status: initialStatus,
       replyToId: input.replyToId ?? null,
       replyToText,
       replyToSenderName,
@@ -328,17 +321,20 @@ export async function editMessage(id: string, email: string, text: string) {
   if (!existing) throw new HttpError(404, "Record not found");
   if (normalizeEmail(existing.senderEmail) !== normalized) throw new HttpError(403, "Forbidden");
 
+  const trimmed = text.trim();
+  if (!trimmed) throw new HttpError(400, "Message text cannot be empty.");
+
   const updated = await prisma.chatMessage.update({
     where: { id },
-    data: { text: text.trim(), isEdited: true }
+    data: { text: trimmed, isEdited: true }
   });
-  publishMessageUpdated(id, text.trim(), updated.updatedAt.toISOString());
+  publishMessageUpdated(id, trimmed, updated.updatedAt.toISOString());
 }
 
 export async function deleteMessage(id: string, email: string) {
   await ensureChatSchema();
   const normalized = normalizeEmail(email);
-  const isAdmin = normalized === ADMIN_EMAIL;
+  const isAdmin = isChatAdmin(normalized);
   const existing = await prisma.chatMessage.findUnique({
     where: { id },
     select: {
@@ -359,7 +355,7 @@ export async function deleteMessage(id: string, email: string) {
 export async function clearAllMessages(email: string) {
   await ensureChatSchema();
   const normalized = normalizeEmail(email);
-  if (normalized !== ADMIN_EMAIL) {
+  if (!isChatAdmin(normalized)) {
     throw new HttpError(403, "Only Admin can clear the chat history.");
   }
 
@@ -375,6 +371,31 @@ export async function clearAllMessages(email: string) {
   return { cleared: true };
 }
 
+export async function markMessagesRead(email: string) {
+  await ensureChatSchema();
+  const normalized = normalizeEmail(email);
+
+  const unread = await prisma.chatMessage.findMany({
+    where: {
+      workspaceId: WORKSPACE_ID,
+      NOT: { senderEmail: normalized },
+      status: { not: "read" }
+    },
+    select: { id: true },
+    take: 500
+  });
+
+  if (unread.length === 0) return { updated: 0 };
+
+  const ids = unread.map((row) => row.id);
+  await prisma.chatMessage.updateMany({
+    where: { id: { in: ids } },
+    data: { status: "read" }
+  });
+  publishMessageStatus(ids, "read");
+  return { updated: ids.length };
+}
+
 async function removeLocalAttachments(urls: string[]) {
   for (const url of urls) {
     if (!url.startsWith("/uploads/messages/")) continue;
@@ -388,12 +409,13 @@ async function removeLocalAttachments(urls: string[]) {
 }
 
 export function listWorkspaceMembers() {
+  const online = new Set(getOnlineEmails());
   return AUTHORIZED_USERS.map((user) => ({
     id: user.id,
     name: user.name,
     email: user.email,
     role: user.roleTitle,
     color: user.color,
-    isOnline: true
+    isOnline: online.has(normalizeEmail(user.email))
   }));
 }

@@ -1,7 +1,14 @@
 import { getSession } from "@/lib/auth";
 import { unauthorized } from "@/lib/api-error";
 import { isAuthorizedEmail } from "@/lib/authorized-users";
-import { getTypingUsers, subscribeMessagesRealtime } from "@/services/messages-realtime.service";
+import {
+  getOnlineEmails,
+  getTypingUsers,
+  heartbeatPresence,
+  setUserOffline,
+  setUserOnline,
+  subscribeMessagesRealtime
+} from "@/services/messages-realtime.service";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -22,18 +29,26 @@ export async function GET(req: Request) {
         controller.enqueue(encoder.encode(`data: ${JSON.stringify(payload)}\n\n`));
       };
 
-      send("connected", { ok: true, typingUsers: getTypingUsers() });
+      const onlineEmails = setUserOnline(session.email);
+      send("connected", {
+        ok: true,
+        typingUsers: getTypingUsers(),
+        onlineEmails
+      });
+      send("presence.snapshot", { onlineEmails });
 
       const unsubscribe = subscribeMessagesRealtime((event) => {
         send(event.type, event);
       });
 
       const ping = setInterval(() => {
-        send("ping", { at: new Date().toISOString() });
+        heartbeatPresence(session.email);
+        send("ping", { at: new Date().toISOString(), onlineEmails: getOnlineEmails() });
       }, 15000);
 
       const typingRefresh = setInterval(() => {
         send("typing.snapshot", { typingUsers: getTypingUsers() });
+        send("presence.snapshot", { onlineEmails: getOnlineEmails() });
       }, 5000);
 
       controller.enqueue(encoder.encode(`retry: 3000\n\n`));
@@ -44,6 +59,7 @@ export async function GET(req: Request) {
         clearInterval(ping);
         clearInterval(typingRefresh);
         unsubscribe();
+        setUserOffline(session.email);
         try {
           controller.close();
         } catch {

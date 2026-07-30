@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useRef, useEffect } from "react";
+import { Download, FileText, Pencil, Reply, Trash2, Copy } from "lucide-react";
 import type { Message, TeamMember } from "./chat-types";
 import { cn } from "@/lib/utils";
 
@@ -25,6 +26,16 @@ function formatBytes(size: number) {
   return `${(size / 1024 / 1024).toFixed(1)} MB`;
 }
 
+function formatUploadTime(iso?: string) {
+  if (!iso) return "";
+  return new Date(iso).toLocaleString([], {
+    month: "short",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit"
+  });
+}
+
 export function ChatBubble({
   message,
   sender,
@@ -46,6 +57,7 @@ export function ChatBubble({
   const displayName = sender.name !== "Unknown" ? sender.name : message.senderName || "Unknown";
   const displayEmail = sender.email || message.senderEmail || "";
   const displayColor = sender.color || "#94A3B8";
+  const canEditText = canEdit && Boolean(message.text.trim());
 
   useEffect(() => {
     if (!menuOpen) return;
@@ -56,7 +68,10 @@ export function ChatBubble({
     return () => document.removeEventListener("mousedown", handleClick);
   }, [menuOpen]);
 
-  const timeStr = new Date(message.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  const timeStr = new Date(message.createdAt).toLocaleTimeString([], {
+    hour: "2-digit",
+    minute: "2-digit"
+  });
 
   const handleSaveEdit = () => {
     if (editText.trim() && editText !== message.text) {
@@ -88,7 +103,7 @@ export function ChatBubble({
       )}
       {!isOwn && !showHeader && <div className="w-8 shrink-0" />}
 
-      <div className="group relative max-w-[70%]">
+      <div className="group relative max-w-[min(70%,28rem)]">
         {showHeader && !isOwn && (
           <div className="mb-0.5 flex items-center gap-2">
             <span className="text-[11px] font-semibold" style={{ color: displayColor }}>
@@ -98,7 +113,7 @@ export function ChatBubble({
           </div>
         )}
 
-        {message.replyToText && (
+        {message.replyToText ? (
           <div
             className={cn(
               "mb-1 rounded-[8px] border-l-2 px-3 py-1.5 text-xs",
@@ -108,15 +123,16 @@ export function ChatBubble({
             <p className="font-medium text-[#0F172A]">{message.replyToSenderName}</p>
             <p className="truncate text-[#64748B]">{message.replyToText}</p>
           </div>
-        )}
+        ) : null}
 
         {editing ? (
           <div className="flex flex-col gap-1.5">
-            <input
+            <textarea
               value={editText}
               onChange={(e) => setEditText(e.target.value)}
               onKeyDown={handleEditKeyDown}
               autoFocus
+              rows={3}
               className="w-full rounded-[10px] border border-[#2563EB] bg-white px-3 py-2 text-sm text-[#0F172A] outline-none"
             />
             <div className="flex gap-2 text-xs">
@@ -142,7 +158,7 @@ export function ChatBubble({
                 "relative rounded-[14px] px-4 py-2.5 text-sm leading-relaxed",
                 isOwn
                   ? "rounded-br-[4px] bg-[#2563EB] text-white"
-                  : "rounded-bl-[4px] bg-[#F1F5F9] text-[#0F172A]"
+                  : "rounded-bl-[4px] bg-white text-[#0F172A] shadow-sm ring-1 ring-[#E2E8F0]"
               )}
             >
               {message.attachments
@@ -154,7 +170,6 @@ export function ChatBubble({
                     onClick={() => onPreviewImage?.(image.url, image.name)}
                     className="mb-2 block w-full overflow-hidden rounded-[8px] text-left"
                   >
-                    {/* Local chat uploads are served from /public; next/image is unnecessary here. */}
                     {/* eslint-disable-next-line @next/next/no-img-element */}
                     <img
                       src={image.url}
@@ -164,22 +179,32 @@ export function ChatBubble({
                     />
                   </button>
                 ))}
+
               {message.attachments
                 .filter((a) => a.type === "file")
                 .map((file) => (
                   <div
                     key={file.id}
                     className={cn(
-                      "mb-2 flex items-center gap-2 rounded-[8px] border px-3 py-2 text-xs",
-                      isOwn ? "border-white/20" : "border-[#E2E8F0]"
+                      "mb-2 flex items-center gap-2 rounded-[10px] border px-3 py-2.5 text-xs",
+                      isOwn ? "border-white/20 bg-white/10" : "border-[#E2E8F0] bg-[#F8FAFC]"
                     )}
                   >
-                    <span className="text-base" aria-hidden>
-                      📎
-                    </span>
+                    <div
+                      className={cn(
+                        "flex h-9 w-9 items-center justify-center rounded-[8px]",
+                        isOwn ? "bg-white/15" : "bg-white"
+                      )}
+                    >
+                      <FileText className="size-4" />
+                    </div>
                     <div className="min-w-0 flex-1">
                       <p className="truncate font-medium">{file.name}</p>
-                      {file.size ? <p className="opacity-70">{formatBytes(file.size)}</p> : null}
+                      <p className="opacity-70">
+                        {[formatBytes(file.size), formatUploadTime(file.createdAt || message.createdAt)]
+                          .filter(Boolean)
+                          .join(" · ")}
+                      </p>
                     </div>
                     <a
                       href={file.url}
@@ -187,10 +212,11 @@ export function ChatBubble({
                       target="_blank"
                       rel="noreferrer"
                       className={cn(
-                        "rounded px-2 py-1 text-[10px] font-medium",
-                        isOwn ? "bg-white/20" : "bg-[#E2E8F0]"
+                        "inline-flex items-center gap-1 rounded-[6px] px-2 py-1 text-[10px] font-medium",
+                        isOwn ? "bg-white/20 hover:bg-white/30" : "bg-[#E2E8F0] hover:bg-[#CBD5E1]"
                       )}
                     >
+                      <Download className="size-3" />
                       Download
                     </a>
                   </div>
@@ -200,14 +226,17 @@ export function ChatBubble({
 
               <div className={cn("mt-1 flex items-center gap-1.5", isOwn ? "justify-end" : "justify-start")}>
                 <span className={cn("text-[10px]", isOwn ? "text-white/70" : "text-[#94A3B8]")}>{timeStr}</span>
-                {message.isEdited && (
+                {message.isEdited ? (
                   <span className={cn("text-[10px]", isOwn ? "text-white/50" : "text-[#94A3B8]")}>edited</span>
-                )}
-                {isOwn && (
-                  <span className={cn("text-[10px]", message.status === "read" ? "text-white/90" : "text-white/60")}>
+                ) : null}
+                {isOwn ? (
+                  <span
+                    className={cn("text-[10px]", message.status === "read" ? "text-sky-200" : "text-white/60")}
+                    title={message.status}
+                  >
                     {message.status === "read" || message.status === "delivered" ? "✓✓" : "✓"}
                   </span>
-                )}
+                ) : null}
               </div>
             </div>
 
@@ -216,7 +245,7 @@ export function ChatBubble({
                 <button
                   type="button"
                   onClick={() => setMenuOpen((v) => !v)}
-                  className="flex h-6 w-6 items-center justify-center rounded-[6px] text-[#94A3B8] hover:bg-[#F1F5F9] hover:text-[#0F172A]"
+                  className="flex h-6 w-6 items-center justify-center rounded-[6px] bg-white text-[#94A3B8] shadow-sm ring-1 ring-[#E2E8F0] hover:text-[#0F172A]"
                   aria-label="Message actions"
                 >
                   <svg className="size-3.5" viewBox="0 0 16 16" fill="currentColor">
@@ -225,10 +254,10 @@ export function ChatBubble({
                     <circle cx="8" cy="13" r="1.5" />
                   </svg>
                 </button>
-                {menuOpen && (
+                {menuOpen ? (
                   <div
                     className={cn(
-                      "absolute z-50 w-36 rounded-[10px] border border-[#E2E8F0] bg-white p-1 shadow-lg",
+                      "absolute z-50 w-40 rounded-[10px] border border-[#E2E8F0] bg-white p-1 shadow-lg",
                       isOwn ? "right-0" : "left-0"
                     )}
                   >
@@ -240,7 +269,7 @@ export function ChatBubble({
                       }}
                       className="flex w-full items-center gap-2 rounded-[6px] px-3 py-2 text-xs text-[#0F172A] hover:bg-[#F1F5F9]"
                     >
-                      Reply
+                      <Reply className="size-3.5" /> Reply
                     </button>
                     {message.text ? (
                       <button
@@ -251,10 +280,10 @@ export function ChatBubble({
                         }}
                         className="flex w-full items-center gap-2 rounded-[6px] px-3 py-2 text-xs text-[#0F172A] hover:bg-[#F1F5F9]"
                       >
-                        Copy
+                        <Copy className="size-3.5" /> Copy
                       </button>
                     ) : null}
-                    {canEdit && (
+                    {canEditText ? (
                       <button
                         type="button"
                         onClick={() => {
@@ -263,10 +292,10 @@ export function ChatBubble({
                         }}
                         className="flex w-full items-center gap-2 rounded-[6px] px-3 py-2 text-xs text-[#0F172A] hover:bg-[#F1F5F9]"
                       >
-                        Edit
+                        <Pencil className="size-3.5" /> Edit
                       </button>
-                    )}
-                    {canDelete && (
+                    ) : null}
+                    {canDelete ? (
                       <button
                         type="button"
                         onClick={() => {
@@ -275,11 +304,11 @@ export function ChatBubble({
                         }}
                         className="flex w-full items-center gap-2 rounded-[6px] px-3 py-2 text-xs text-red-500 hover:bg-red-50"
                       >
-                        Delete
+                        <Trash2 className="size-3.5" /> Delete
                       </button>
-                    )}
+                    ) : null}
                   </div>
-                )}
+                ) : null}
               </div>
             </div>
           </>

@@ -1,13 +1,12 @@
 "use client";
 
 import { useState, useRef, useEffect, useMemo, useCallback } from "react";
-import { Hash, Search, X, Trash2 } from "lucide-react";
+import { Hash, Search, X, Trash2, Loader2 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
-import type { Message, TeamMember, Workspace } from "./chat-types";
+import type { Message, TeamMember, Workspace, Attachment } from "./chat-types";
 import { ChatBubble } from "./chat-bubble";
 import { ChatInput } from "./chat-input";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
-import type { Attachment } from "./chat-types";
 
 interface ChatWindowProps {
   workspace: Workspace;
@@ -15,6 +14,9 @@ interface ChatWindowProps {
   currentUserId: string;
   currentUserEmail: string;
   isAdmin: boolean;
+  hasMore?: boolean;
+  loadingMore?: boolean;
+  onLoadMore?: () => void;
   onSend: (payload: { text: string; attachments: Attachment[]; replyToId?: string | null }) => void;
   onTypingChange?: (isTyping: boolean) => void;
   typingUsers?: string[];
@@ -24,6 +26,8 @@ interface ChatWindowProps {
   clearChatLoading?: boolean;
   deleteLoading?: boolean;
   onBack?: () => void;
+  onUploadError?: (message: string) => void;
+  onUploadSuccess?: (name: string) => void;
 }
 
 function formatDateSeparator(ts: string) {
@@ -60,6 +64,9 @@ export function ChatWindow({
   currentUserId,
   currentUserEmail,
   isAdmin,
+  hasMore = false,
+  loadingMore = false,
+  onLoadMore,
   onSend,
   onTypingChange,
   typingUsers = [],
@@ -68,7 +75,9 @@ export function ChatWindow({
   onClearChat,
   clearChatLoading = false,
   deleteLoading = false,
-  onBack
+  onBack,
+  onUploadError,
+  onUploadSuccess
 }: ChatWindowProps) {
   const [replyTo, setReplyTo] = useState<Message | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
@@ -77,6 +86,10 @@ export function ChatWindow({
   const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null);
   const [lightbox, setLightbox] = useState<{ url: string; name: string } | null>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const topSentinelRef = useRef<HTMLDivElement>(null);
+  const stickToBottomRef = useRef(true);
+  const prevLenRef = useRef(messages.length);
 
   const selfEmail = normalize(currentUserEmail);
 
@@ -110,9 +123,40 @@ export function ChatWindow({
     [memberByEmail, memberById]
   );
 
+  const handleScroll = useCallback(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    const distanceFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
+    stickToBottomRef.current = distanceFromBottom < 80;
+  }, []);
+
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+    const grewAtEnd = messages.length > prevLenRef.current;
+    const prepended = messages.length > prevLenRef.current && !stickToBottomRef.current;
+    prevLenRef.current = messages.length;
+
+    if (stickToBottomRef.current && grewAtEnd && !prepended) {
+      bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+    }
   }, [messages]);
+
+  useEffect(() => {
+    if (!hasMore || !onLoadMore || searchQuery.trim()) return;
+    const root = scrollRef.current;
+    const target = topSentinelRef.current;
+    if (!root || !target) return;
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries.some((entry) => entry.isIntersecting) && !loadingMore) {
+          onLoadMore();
+        }
+      },
+      { root, rootMargin: "120px 0px 0px 0px", threshold: 0 }
+    );
+    observer.observe(target);
+    return () => observer.disconnect();
+  }, [hasMore, loadingMore, onLoadMore, searchQuery, messages.length]);
 
   useEffect(() => {
     if (!lightbox) return;
@@ -150,6 +194,7 @@ export function ChatWindow({
         replyToId: replyTo?.id ?? null
       });
       setReplyTo(null);
+      stickToBottomRef.current = true;
     },
     [onSend, replyTo]
   );
@@ -168,49 +213,45 @@ export function ChatWindow({
   );
 
   const onlineCount = workspace.members.filter((m) => m.isOnline).length;
-  const pendingDelete = pendingDeleteId ? messages.find((m) => m.id === pendingDeleteId) : null;
 
   return (
-    <div className="flex h-full flex-col">
-      <div className="flex items-center gap-3 border-b border-[#E2E8F0] bg-white px-4 py-3">
-        {onBack && (
+    <div className="flex h-full flex-col bg-[#F8FAFC]">
+      <div className="sticky top-0 z-20 flex items-center gap-3 border-b border-[#E2E8F0] bg-white px-4 py-3">
+        {onBack ? (
           <button
             type="button"
             onClick={onBack}
             className="flex h-8 w-8 items-center justify-center rounded-[8px] text-[#64748B] hover:bg-[#F1F5F9] lg:hidden"
           >
-            <svg
-              className="size-4"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            >
+            <svg className="size-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
               <path d="m15 18-6-6 6-6" />
             </svg>
           </button>
-        )}
+        ) : null}
         <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-[10px] bg-[#2563EB]">
           <Hash className="size-5 text-white" />
         </div>
         <div className="min-w-0 flex-1">
           <p className="text-sm font-semibold text-[#0F172A]">{workspace.name}</p>
           <p className="text-[11px] text-[#64748B]">
-            {workspace.members.length} Members · {onlineCount} Online
+            {workspace.members.length} members · {onlineCount} online
           </p>
         </div>
         <div className="flex items-center gap-1.5">
           <div className="hidden items-center -space-x-1.5 sm:flex">
-            {workspace.members.map((m) => (
+            {workspace.members.slice(0, 5).map((m) => (
               <div
                 key={m.id}
-                className="flex h-7 w-7 items-center justify-center rounded-full border-2 border-white text-[10px] font-bold text-white"
+                className="relative flex h-7 w-7 items-center justify-center rounded-full border-2 border-white text-[10px] font-bold text-white"
                 style={{ backgroundColor: m.color }}
-                title={`${m.name} (${m.email})`}
+                title={`${m.name} (${m.isOnline ? "online" : "offline"})`}
               >
                 {m.name[0]}
+                <span
+                  className={`absolute -bottom-0.5 -right-0.5 h-2 w-2 rounded-full border border-white ${
+                    m.isOnline ? "bg-[#22C55E]" : "bg-[#94A3B8]"
+                  }`}
+                />
               </div>
             ))}
           </div>
@@ -236,13 +277,13 @@ export function ChatWindow({
         </div>
       </div>
 
-      {showSearch && (
-        <div className="flex items-center gap-2 border-b border-[#E2E8F0] bg-[#F8FAFC] px-4 py-2">
+      {showSearch ? (
+        <div className="flex items-center gap-2 border-b border-[#E2E8F0] bg-white px-4 py-2">
           <Search className="size-4 text-[#94A3B8]" />
           <input
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="Search messages or members..."
+            placeholder="Search messages, files, or members..."
             autoFocus
             className="flex-1 bg-transparent text-sm text-[#0F172A] outline-none placeholder:text-[#94A3B8]"
           />
@@ -257,11 +298,30 @@ export function ChatWindow({
             <X className="size-3.5" />
           </button>
         </div>
-      )}
+      ) : null}
 
-      <div className="flex-1 overflow-y-auto bg-[#F8FAFC] px-4 py-4">
+      <div ref={scrollRef} onScroll={handleScroll} className="flex-1 overflow-y-auto px-4 py-4">
+        <div ref={topSentinelRef} className="h-1 w-full" />
+        {loadingMore ? (
+          <div className="mb-3 flex justify-center text-xs text-[#64748B]">
+            <Loader2 className="mr-2 size-3.5 animate-spin" /> Loading earlier messages...
+          </div>
+        ) : null}
+        {hasMore && !searchQuery.trim() ? (
+          <div className="mb-3 flex justify-center">
+            <button
+              type="button"
+              onClick={() => onLoadMore?.()}
+              disabled={loadingMore}
+              className="rounded-full bg-white px-3 py-1 text-[11px] font-medium text-[#2563EB] shadow-sm ring-1 ring-[#E2E8F0] hover:bg-[#EFF6FF] disabled:opacity-50"
+            >
+              Load earlier messages
+            </button>
+          </div>
+        ) : null}
+
         {grouped.length === 0 ? (
-          <div className="flex h-full flex-col items-center justify-center text-center">
+          <div className="flex h-full min-h-[240px] flex-col items-center justify-center text-center">
             <p className="text-sm font-medium text-[#0F172A]">
               {searchQuery ? "No messages match your search" : "No messages yet"}
             </p>
@@ -273,7 +333,7 @@ export function ChatWindow({
           grouped.map((group) => (
             <div key={group.date}>
               <div className="sticky top-0 z-10 flex justify-center py-3">
-                <span className="rounded-full bg-white px-3 py-1 text-[11px] font-medium text-[#64748B] shadow-sm">
+                <span className="rounded-full bg-white px-3 py-1 text-[11px] font-medium text-[#64748B] shadow-sm ring-1 ring-[#E2E8F0]">
                   {formatDateSeparator(group.messages[0].createdAt)}
                 </span>
               </div>
@@ -291,7 +351,7 @@ export function ChatWindow({
                         key={msg.id}
                         initial={{ opacity: 0, y: 6 }}
                         animate={{ opacity: 1, y: 0 }}
-                        transition={{ delay: Math.min(idx * 0.015, 0.2) }}
+                        transition={{ delay: Math.min(idx * 0.01, 0.12) }}
                       >
                         <ChatBubble
                           message={msg}
@@ -314,6 +374,7 @@ export function ChatWindow({
             </div>
           ))
         )}
+
         {typingUsers.length > 0 ? (
           <div className="mt-3 text-xs text-[#64748B]">
             {typingUsers.join(", ")} {typingUsers.length > 1 ? "are" : "is"} typing...
@@ -334,12 +395,14 @@ export function ChatWindow({
             : null
         }
         onCancelReply={() => setReplyTo(null)}
+        onUploadError={onUploadError}
+        onUploadSuccess={onUploadSuccess}
       />
 
       <ConfirmDialog
         open={confirmClear}
-        title="Clear entire chat?"
-        description="This permanently deletes every message, image, and file in Lexcore Solutions for all users. This cannot be undone."
+        title="Clear Chat"
+        description="This will permanently delete all messages. This action cannot be undone."
         confirmLabel="Clear Chat"
         loading={clearChatLoading}
         onCancel={() => setConfirmClear(false)}
@@ -351,12 +414,8 @@ export function ChatWindow({
 
       <ConfirmDialog
         open={Boolean(pendingDeleteId)}
-        title="Delete this message?"
-        description={
-          pendingDelete?.attachments.length
-            ? "This message and its attachments will be removed for everyone. This cannot be undone."
-            : "This message will be removed for everyone. This cannot be undone."
-        }
+        title="Delete message"
+        description="Are you sure you want to delete this message?"
         confirmLabel="Delete"
         loading={deleteLoading}
         onCancel={() => setPendingDeleteId(null)}
