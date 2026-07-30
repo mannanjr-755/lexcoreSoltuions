@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { useForm } from "react-hook-form";
+import { useForm, type Resolver } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { motion } from "framer-motion";
@@ -114,7 +114,8 @@ export default function CustomersPage() {
   const totalPages = Math.max(1, Math.ceil(total / 10));
 
   const form = useForm<CustomerCreateInput>({
-    resolver: zodResolver(customerCreateSchema),
+    // Zod transforms (money/optionalText) widen input vs output; cast keeps RHF aligned.
+    resolver: zodResolver(customerCreateSchema) as Resolver<CustomerCreateInput>,
     defaultValues: emptyForm
   });
 

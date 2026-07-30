@@ -39,9 +39,25 @@ export function handleApiError(error: unknown) {
 
   if (error instanceof Prisma.PrismaClientKnownRequestError) {
     if (error.code === "P2002") {
-      const fields = Array.isArray(error.meta?.target) ? (error.meta?.target as string[]).join(", ") : "record";
+      const fields = Array.isArray(error.meta?.target)
+        ? (error.meta?.target as string[]).map(String)
+        : [String(error.meta?.target ?? "record")];
+      const joined = fields.join(", ");
+      logDbError("Unique constraint violation", error);
+      if (fields.some((field) => field.toLowerCase().includes("customerid"))) {
+        return NextResponse.json(
+          { message: "Could not allocate a unique customer ID. Please try again." },
+          { status: 409 }
+        );
+      }
+      if (fields.some((field) => field.toLowerCase().includes("phone"))) {
+        return NextResponse.json(
+          { message: "A customer with this phone number already exists." },
+          { status: 409 }
+        );
+      }
       return NextResponse.json(
-        { message: `Duplicate entry. A record with the same ${fields} already exists.` },
+        { message: `Duplicate entry. A record with the same ${joined} already exists.` },
         { status: 409 }
       );
     }

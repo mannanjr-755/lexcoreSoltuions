@@ -20,6 +20,21 @@ const EMOJI_LIST = [
   "✅","❌","❓","❗","💡","📌","🎯","💻","📱","💼","📁","🔑","⚙️","📊","📈"
 ];
 
+const MAX_SIZE = 10 * 1024 * 1024;
+const IMAGE_EXT = new Set([".jpg", ".jpeg", ".png", ".webp"]);
+const FILE_EXT = new Set([".pdf", ".doc", ".docx", ".xlsx", ".zip", ".txt"]);
+
+function extensionOf(name: string) {
+  const idx = name.lastIndexOf(".");
+  return idx >= 0 ? name.slice(idx).toLowerCase() : "";
+}
+
+function formatBytes(size: number) {
+  if (size < 1024) return `${size} B`;
+  if (size < 1024 * 1024) return `${(size / 1024).toFixed(1)} KB`;
+  return `${(size / 1024 / 1024).toFixed(1)} MB`;
+}
+
 export function ChatInput({ onSend, onTypingChange, replyTo, onCancelReply }: ChatInputProps) {
   const [text, setText] = useState("");
   const [showEmoji, setShowEmoji] = useState(false);
@@ -55,15 +70,19 @@ export function ChatInput({ onSend, onTypingChange, replyTo, onCancelReply }: Ch
     onTypingChange?.(false);
     setText("");
     setAttachments([]);
+    setUploadError("");
     textareaRef.current?.focus();
   }, [attachments, text, onSend, onTypingChange]);
 
-  const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
-    if (e.key === "Enter" && !e.shiftKey) {
-      e.preventDefault();
-      handleSend();
-    }
-  }, [handleSend]);
+  const handleKeyDown = useCallback(
+    (e: React.KeyboardEvent) => {
+      if (e.key === "Enter" && !e.shiftKey) {
+        e.preventDefault();
+        handleSend();
+      }
+    },
+    [handleSend]
+  );
 
   const insertEmoji = useCallback((emoji: string) => {
     setText((p) => p + emoji);
@@ -89,47 +108,75 @@ export function ChatInput({ onSend, onTypingChange, replyTo, onCancelReply }: Ch
     };
   }, [onTypingChange, text]);
 
-  const uploadFile = useCallback(async (file: File) => {
+  const uploadFile = useCallback(async (file: File, kind: "image" | "file") => {
     setUploadError("");
+    const ext = extensionOf(file.name);
+
+    if (file.size > MAX_SIZE) {
+      setUploadError("File size exceeds 10MB limit.");
+      return;
+    }
+
+    if (kind === "image" && !IMAGE_EXT.has(ext) && !file.type.startsWith("image/")) {
+      setUploadError("Images must be JPG, JPEG, PNG, or WEBP.");
+      return;
+    }
+    if (kind === "file" && !FILE_EXT.has(ext)) {
+      setUploadError("Files must be PDF, DOC, DOCX, XLSX, ZIP, or TXT.");
+      return;
+    }
+
     setUploading(true);
     setUploadProgress(0);
     try {
       const formData = new FormData();
       formData.append("file", file);
       const response = await api.post("/api/messages/upload", formData, {
-        headers: { "Content-Type": "multipart/form-data" },
         onUploadProgress: (event) => {
-          if (!event.total) return;
+          if (!event.total) {
+            setUploadProgress((prev) => (prev < 90 ? prev + 10 : prev));
+            return;
+          }
           setUploadProgress(Math.round((event.loaded / event.total) * 100));
         }
       });
       const attachment = response.data.attachment as Attachment;
       setAttachments((prev) => [...prev, attachment]);
+      setUploadProgress(100);
     } catch (error: unknown) {
       const message =
         typeof error === "object" && error && "response" in error
-          ? String((error as { response?: { data?: { message?: string } } }).response?.data?.message ?? "Upload failed.")
+          ? String(
+              (error as { response?: { data?: { message?: string } } }).response?.data?.message ??
+                "Upload failed."
+            )
           : "Upload failed.";
       setUploadError(message);
     } finally {
-      setUploadProgress(0);
       setUploading(false);
+      setTimeout(() => setUploadProgress(0), 400);
     }
   }, []);
 
-  const handleImageSelect = useCallback(async (event: ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    if (!file) return;
-    await uploadFile(file);
-    event.target.value = "";
-  }, [uploadFile]);
+  const handleImageSelect = useCallback(
+    async (event: ChangeEvent<HTMLInputElement>) => {
+      const file = event.target.files?.[0];
+      if (!file) return;
+      await uploadFile(file, "image");
+      event.target.value = "";
+    },
+    [uploadFile]
+  );
 
-  const handleFileSelect = useCallback(async (event: ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    if (!file) return;
-    await uploadFile(file);
-    event.target.value = "";
-  }, [uploadFile]);
+  const handleFileSelect = useCallback(
+    async (event: ChangeEvent<HTMLInputElement>) => {
+      const file = event.target.files?.[0];
+      if (!file) return;
+      await uploadFile(file, "file");
+      event.target.value = "";
+    },
+    [uploadFile]
+  );
 
   return (
     <div className="border-t border-[#E2E8F0] bg-white px-4 py-3">
@@ -139,15 +186,37 @@ export function ChatInput({ onSend, onTypingChange, replyTo, onCancelReply }: Ch
             <p className="font-medium text-[#2563EB]">Replying to {replyTo.senderName}</p>
             <p className="truncate text-[#64748B]">{replyTo.text}</p>
           </div>
-          <button onClick={onCancelReply} className="shrink-0 text-[#94A3B8] hover:text-[#0F172A]">✕</button>
+          <button
+            type="button"
+            onClick={onCancelReply}
+            className="shrink-0 text-[#94A3B8] hover:text-[#0F172A]"
+          >
+            ✕
+          </button>
         </div>
       )}
       {uploadError ? <p className="mb-2 text-xs text-red-500">{uploadError}</p> : null}
-      {uploading ? <p className="mb-2 text-xs text-[#64748B]">Uploading... {uploadProgress}%</p> : null}
+      {uploading || uploadProgress > 0 ? (
+        <div className="mb-2">
+          <div className="mb-1 flex items-center justify-between text-[11px] text-[#64748B]">
+            <span>{uploading ? "Uploading..." : "Upload complete"}</span>
+            <span>{uploadProgress}%</span>
+          </div>
+          <div className="h-1.5 overflow-hidden rounded-full bg-[#E2E8F0]">
+            <div
+              className="h-full rounded-full bg-[#2563EB] transition-all duration-200"
+              style={{ width: `${uploadProgress}%` }}
+            />
+          </div>
+        </div>
+      ) : null}
       {attachments.length > 0 && (
         <div className="mb-2 flex flex-wrap gap-2">
           {attachments.map((file) => (
-            <div key={file.id} className="relative overflow-hidden rounded-[10px] border border-[#E2E8F0] bg-[#F8FAFC]">
+            <div
+              key={file.id}
+              className="relative overflow-hidden rounded-[10px] border border-[#E2E8F0] bg-[#F8FAFC]"
+            >
               {file.type === "image" ? (
                 // eslint-disable-next-line @next/next/no-img-element
                 <img src={file.url} alt={file.name} className="h-20 w-28 object-cover" />
@@ -156,7 +225,7 @@ export function ChatInput({ onSend, onTypingChange, replyTo, onCancelReply }: Ch
                   <span>📎</span>
                   <div className="min-w-0">
                     <p className="truncate font-medium text-[#0F172A]">{file.name}</p>
-                    <p className="text-[#64748B]">{(file.size / 1024).toFixed(1)} KB</p>
+                    <p className="text-[#64748B]">{formatBytes(file.size)}</p>
                   </div>
                 </div>
               )}
@@ -212,7 +281,8 @@ export function ChatInput({ onSend, onTypingChange, replyTo, onCancelReply }: Ch
             <button
               type="button"
               onClick={() => imageInputRef.current?.click()}
-              className="flex h-7 w-7 items-center justify-center rounded-[6px] text-[#94A3B8] hover:bg-[#F1F5F9] hover:text-[#0F172A]"
+              disabled={uploading}
+              className="flex h-7 w-7 items-center justify-center rounded-[6px] text-[#94A3B8] hover:bg-[#F1F5F9] hover:text-[#0F172A] disabled:opacity-40"
               title="Attach image"
             >
               <ImageIcon className="size-4" />
@@ -220,7 +290,8 @@ export function ChatInput({ onSend, onTypingChange, replyTo, onCancelReply }: Ch
             <button
               type="button"
               onClick={() => fileInputRef.current?.click()}
-              className="flex h-7 w-7 items-center justify-center rounded-[6px] text-[#94A3B8] hover:bg-[#F1F5F9] hover:text-[#0F172A]"
+              disabled={uploading}
+              className="flex h-7 w-7 items-center justify-center rounded-[6px] text-[#94A3B8] hover:bg-[#F1F5F9] hover:text-[#0F172A] disabled:opacity-40"
               title="Attach file"
             >
               <Paperclip className="size-4" />
@@ -239,14 +310,14 @@ export function ChatInput({ onSend, onTypingChange, replyTo, onCancelReply }: Ch
       <input
         ref={imageInputRef}
         type="file"
-        accept="image/jpeg,image/jpg,image/png,image/webp"
+        accept="image/jpeg,image/jpg,image/png,image/webp,.jpg,.jpeg,.png,.webp"
         className="hidden"
         onChange={handleImageSelect}
       />
       <input
         ref={fileInputRef}
         type="file"
-        accept=".pdf,.doc,.docx,.xlsx,.zip,.txt"
+        accept=".pdf,.doc,.docx,.xlsx,.zip,.txt,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/zip,text/plain"
         className="hidden"
         onChange={handleFileSelect}
       />

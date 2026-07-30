@@ -12,6 +12,17 @@ function sleep(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+api.interceptors.request.use((config) => {
+  // Let the browser set multipart boundary for FormData uploads.
+  if (typeof FormData !== "undefined" && config.data instanceof FormData) {
+    if (config.headers) {
+      delete config.headers["Content-Type"];
+      delete config.headers["content-type"];
+    }
+  }
+  return config;
+});
+
 api.interceptors.response.use(
   (response) => response,
   async (error: AxiosError) => {

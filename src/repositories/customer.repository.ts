@@ -1,3 +1,4 @@
+import { randomBytes } from "node:crypto";
 import { prisma } from "@/lib/prisma";
 import { withMongoId, withMongoIds, serializeNested } from "@/lib/serialize";
 import { HttpError } from "@/lib/api-error";
@@ -37,24 +38,30 @@ export async function ensureCustomerSchema() {
   await schemaReady;
 }
 
-async function generateCustomerId(attempt = 0) {
-  const rows = await prisma.customer.findMany({
-    where: { customerId: { startsWith: "LC-" } },
-    select: { customerId: true }
-  });
+/**
+ * Collision-resistant customer IDs:
+ * LC-YYMMDD-XXXXXX (date + 6 hex chars from crypto random).
+ * Never depends on scanning existing rows, so concurrent creates cannot collide.
+ */
+function generateCustomerId() {
+  const now = new Date();
+  const datePart = [
+    String(now.getFullYear()).slice(-2),
+    String(now.getMonth() + 1).padStart(2, "0"),
+    String(now.getDate()).padStart(2, "0")
+  ].join("");
+  const rand = randomBytes(3).toString("hex").toUpperCase();
+  return `LC-${datePart}-${rand}`;
+}
 
-  let max = 0;
-  for (const row of rows) {
-    const match = row.customerId.match(/^LC-(\d+)$/i);
-    if (match) max = Math.max(max, Number(match[1]));
+function isCustomerIdUniqueViolation(error: unknown) {
+  if (typeof error !== "object" || error === null || !("code" in error)) return false;
+  if ((error as { code?: string }).code !== "P2002") return false;
+  const target = (error as { meta?: { target?: unknown } }).meta?.target;
+  if (Array.isArray(target)) {
+    return target.some((field) => String(field).toLowerCase().includes("customerid"));
   }
-
-  if (max === 0) {
-    max = await prisma.customer.count();
-  }
-
-  const next = max + 1 + attempt;
-  return `LC-${String(Math.max(1, next)).padStart(5, "0")}`;
+  return String(target ?? "").toLowerCase().includes("customerid");
 }
 
 async function assertNoDuplicatePhone(phone: string, excludeId?: string) {
@@ -134,8 +141,8 @@ export const customerRepository = {
     }
 
     for (let attempt = 0; attempt < 5; attempt += 1) {
+      const customerId = generateCustomerId();
       try {
-        const customerId = await generateCustomerId(attempt);
         const created = await prisma.customer.create({
           data: {
             customerId,
@@ -158,19 +165,16 @@ export const customerRepository = {
           }
         });
         logger.info("Customer created", { customerId: created.customerId, phone: created.phone });
-        return withMongoId(serializeNested(created));
+        return withMongoId(serializeNested(created))!;
       } catch (error) {
-        const isDuplicate =
-          typeof error === "object" &&
-          error !== null &&
-          "code" in error &&
-          (error as { code?: string }).code === "P2002";
-        if (!isDuplicate || attempt === 4) throw error;
-        logger.warn("Customer ID collision — retrying", { attempt: attempt + 1 });
+        if (!isCustomerIdUniqueViolation(error) || attempt === 4) {
+          throw error;
+        }
+        logger.warn("Customer ID collision — regenerating", { attempt: attempt + 1, customerId });
       }
     }
 
-    return null;
+    throw new HttpError(500, "Unable to allocate a unique customer ID. Please try again.");
   },
 
   async update(id: string, input: CustomerUpdateInput) {

@@ -70,9 +70,6 @@ export async function POST(req: Request) {
     }
 
     const created = await customerRepository.create({ ...parsed.data, assignedManager });
-    if (!created) {
-      return NextResponse.json({ message: "Unable to create customer. Please try again." }, { status: 500 });
-    }
 
     const paymentPercentage =
       created.totalCost > 0 ? Math.round((created.paidAmount / created.totalCost) * 100) : 0;

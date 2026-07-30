@@ -13,14 +13,16 @@ interface ChatWindowProps {
   workspace: Workspace;
   messages: Message[];
   currentUserId: string;
+  currentUserEmail: string;
   isAdmin: boolean;
   onSend: (payload: { text: string; attachments: Attachment[]; replyToId?: string | null }) => void;
   onTypingChange?: (isTyping: boolean) => void;
   typingUsers?: string[];
-  onDelete: (id: string) => void;
+  onDelete: (id: string) => Promise<void> | void;
   onEdit: (id: string, text: string) => void;
   onClearChat?: () => Promise<void> | void;
   clearChatLoading?: boolean;
+  deleteLoading?: boolean;
   onBack?: () => void;
 }
 
@@ -48,10 +50,15 @@ function groupByDate(msgs: Message[]) {
   return groups;
 }
 
+function normalize(email: string) {
+  return email.trim().toLowerCase();
+}
+
 export function ChatWindow({
   workspace,
   messages,
   currentUserId,
+  currentUserEmail,
   isAdmin,
   onSend,
   onTypingChange,
@@ -60,34 +67,75 @@ export function ChatWindow({
   onEdit,
   onClearChat,
   clearChatLoading = false,
+  deleteLoading = false,
   onBack
 }: ChatWindowProps) {
   const [replyTo, setReplyTo] = useState<Message | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [showSearch, setShowSearch] = useState(false);
   const [confirmClear, setConfirmClear] = useState(false);
+  const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null);
+  const [lightbox, setLightbox] = useState<{ url: string; name: string } | null>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
 
-  const memberMap = useMemo(() => {
+  const selfEmail = normalize(currentUserEmail);
+
+  const memberByEmail = useMemo(() => {
+    const map: Record<string, TeamMember> = {};
+    for (const m of workspace.members) map[normalize(m.email)] = m;
+    return map;
+  }, [workspace.members]);
+
+  const memberById = useMemo(() => {
     const map: Record<string, TeamMember> = {};
     for (const m of workspace.members) map[m.id] = m;
     return map;
   }, [workspace.members]);
 
-  const fallbackMember: TeamMember = { id: "unknown", name: "Unknown", email: "", role: "", color: "#94A3B8", isOnline: false };
+  const resolveSender = useCallback(
+    (msg: Message): TeamMember => {
+      const byEmail = memberByEmail[normalize(msg.senderEmail)];
+      if (byEmail) return byEmail;
+      const byId = memberById[msg.senderId];
+      if (byId) return byId;
+      return {
+        id: msg.senderId || msg.senderEmail,
+        name: msg.senderName || "Unknown",
+        email: msg.senderEmail || "",
+        role: "",
+        color: "#94A3B8",
+        isOnline: false
+      };
+    },
+    [memberByEmail, memberById]
+  );
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
 
+  useEffect(() => {
+    if (!lightbox) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setLightbox(null);
+    };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [lightbox]);
+
   const filtered = useMemo(() => {
     if (!searchQuery.trim()) return messages;
     const q = searchQuery.toLowerCase();
-    return messages.filter((m) =>
-      m.text.toLowerCase().includes(q) ||
-      (memberMap[m.senderId]?.name ?? "").toLowerCase().includes(q)
-    );
-  }, [messages, searchQuery, memberMap]);
+    return messages.filter((m) => {
+      const sender = resolveSender(m);
+      return (
+        m.text.toLowerCase().includes(q) ||
+        sender.name.toLowerCase().includes(q) ||
+        m.senderName.toLowerCase().includes(q) ||
+        m.attachments.some((a) => a.name.toLowerCase().includes(q))
+      );
+    });
+  }, [messages, searchQuery, resolveSender]);
 
   const grouped = groupByDate(filtered);
 
@@ -107,18 +155,41 @@ export function ChatWindow({
   );
 
   const handleCopy = useCallback((text: string) => {
-    navigator.clipboard.writeText(text);
+    void navigator.clipboard.writeText(text);
   }, []);
 
+  const isOwnMessage = useCallback(
+    (msg: Message) => {
+      if (selfEmail && normalize(msg.senderEmail) === selfEmail) return true;
+      if (currentUserId && msg.senderId === currentUserId) return true;
+      return false;
+    },
+    [currentUserId, selfEmail]
+  );
+
   const onlineCount = workspace.members.filter((m) => m.isOnline).length;
+  const pendingDelete = pendingDeleteId ? messages.find((m) => m.id === pendingDeleteId) : null;
 
   return (
     <div className="flex h-full flex-col">
-      {/* Header */}
       <div className="flex items-center gap-3 border-b border-[#E2E8F0] bg-white px-4 py-3">
         {onBack && (
-          <button onClick={onBack} className="flex h-8 w-8 items-center justify-center rounded-[8px] text-[#64748B] hover:bg-[#F1F5F9] lg:hidden">
-            <svg className="size-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m15 18-6-6 6-6"/></svg>
+          <button
+            type="button"
+            onClick={onBack}
+            className="flex h-8 w-8 items-center justify-center rounded-[8px] text-[#64748B] hover:bg-[#F1F5F9] lg:hidden"
+          >
+            <svg
+              className="size-4"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
+              <path d="m15 18-6-6 6-6" />
+            </svg>
           </button>
         )}
         <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-[10px] bg-[#2563EB]">
@@ -126,7 +197,9 @@ export function ChatWindow({
         </div>
         <div className="min-w-0 flex-1">
           <p className="text-sm font-semibold text-[#0F172A]">{workspace.name}</p>
-          <p className="text-[11px] text-[#64748B]">{workspace.members.length} Members · {onlineCount} Online</p>
+          <p className="text-[11px] text-[#64748B]">
+            {workspace.members.length} Members · {onlineCount} Online
+          </p>
         </div>
         <div className="flex items-center gap-1.5">
           <div className="hidden items-center -space-x-1.5 sm:flex">
@@ -163,7 +236,6 @@ export function ChatWindow({
         </div>
       </div>
 
-      {/* Search Bar */}
       {showSearch && (
         <div className="flex items-center gap-2 border-b border-[#E2E8F0] bg-[#F8FAFC] px-4 py-2">
           <Search className="size-4 text-[#94A3B8]" />
@@ -175,7 +247,11 @@ export function ChatWindow({
             className="flex-1 bg-transparent text-sm text-[#0F172A] outline-none placeholder:text-[#94A3B8]"
           />
           <button
-            onClick={() => { setShowSearch(false); setSearchQuery(""); }}
+            type="button"
+            onClick={() => {
+              setShowSearch(false);
+              setSearchQuery("");
+            }}
             className="flex h-6 w-6 items-center justify-center rounded text-[#94A3B8] hover:text-[#0F172A]"
           >
             <X className="size-3.5" />
@@ -183,7 +259,6 @@ export function ChatWindow({
         </div>
       )}
 
-      {/* Messages */}
       <div className="flex-1 overflow-y-auto bg-[#F8FAFC] px-4 py-4">
         {grouped.length === 0 ? (
           <div className="flex h-full flex-col items-center justify-center text-center">
@@ -206,27 +281,30 @@ export function ChatWindow({
                 <AnimatePresence initial={false}>
                   {group.messages.map((msg, idx) => {
                     const prevMsg = idx > 0 ? group.messages[idx - 1] : null;
-                    const showHeader = !prevMsg || prevMsg.senderId !== msg.senderId;
-                    const sender = memberMap[msg.senderId] ?? fallbackMember;
+                    const showHeader =
+                      !prevMsg || normalize(prevMsg.senderEmail) !== normalize(msg.senderEmail);
+                    const sender = resolveSender(msg);
+                    const own = isOwnMessage(msg);
 
                     return (
                       <motion.div
                         key={msg.id}
                         initial={{ opacity: 0, y: 6 }}
                         animate={{ opacity: 1, y: 0 }}
-                        transition={{ delay: idx * 0.015 }}
+                        transition={{ delay: Math.min(idx * 0.015, 0.2) }}
                       >
                         <ChatBubble
                           message={msg}
                           sender={sender}
-                          isOwn={msg.senderId === currentUserId}
-                          canEdit={msg.senderId === currentUserId}
-                          canDelete={isAdmin || msg.senderId === currentUserId}
+                          isOwn={own}
+                          canEdit={own}
+                          canDelete={isAdmin || own}
                           showHeader={showHeader}
-                          onDelete={onDelete}
+                          onDelete={(id) => setPendingDeleteId(id)}
                           onEdit={onEdit}
                           onReply={handleReply}
                           onCopy={handleCopy}
+                          onPreviewImage={(url, name) => setLightbox({ url, name })}
                         />
                       </motion.div>
                     );
@@ -244,11 +322,17 @@ export function ChatWindow({
         <div ref={bottomRef} />
       </div>
 
-      {/* Input */}
       <ChatInput
         onSend={handleSend}
         onTypingChange={onTypingChange}
-        replyTo={replyTo ? { text: replyTo.text, senderName: memberMap[replyTo.senderId]?.name ?? "Unknown" } : null}
+        replyTo={
+          replyTo
+            ? {
+                text: replyTo.text || (replyTo.attachments[0]?.name ?? "Attachment"),
+                senderName: resolveSender(replyTo).name
+              }
+            : null
+        }
         onCancelReply={() => setReplyTo(null)}
       />
 
@@ -264,6 +348,49 @@ export function ChatWindow({
           setConfirmClear(false);
         }}
       />
+
+      <ConfirmDialog
+        open={Boolean(pendingDeleteId)}
+        title="Delete this message?"
+        description={
+          pendingDelete?.attachments.length
+            ? "This message and its attachments will be removed for everyone. This cannot be undone."
+            : "This message will be removed for everyone. This cannot be undone."
+        }
+        confirmLabel="Delete"
+        loading={deleteLoading}
+        onCancel={() => setPendingDeleteId(null)}
+        onConfirm={async () => {
+          if (!pendingDeleteId) return;
+          await onDelete(pendingDeleteId);
+          setPendingDeleteId(null);
+        }}
+      />
+
+      {lightbox ? (
+        <div
+          className="fixed inset-0 z-[60] flex items-center justify-center bg-black/80 p-4"
+          onClick={() => setLightbox(null)}
+          role="dialog"
+          aria-modal="true"
+          aria-label="Image preview"
+        >
+          <button
+            type="button"
+            onClick={() => setLightbox(null)}
+            className="absolute right-4 top-4 rounded-full bg-white/10 px-3 py-1.5 text-sm text-white hover:bg-white/20"
+          >
+            Close
+          </button>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src={lightbox.url}
+            alt={lightbox.name}
+            className="max-h-[90vh] max-w-[95vw] rounded-[12px] object-contain shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          />
+        </div>
+      ) : null}
     </div>
   );
 }
