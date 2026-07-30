@@ -170,6 +170,16 @@ export function handleApiError(error: unknown) {
     if (error.message.includes("SMTP")) {
       return NextResponse.json({ message: error.message }, { status: 503 });
     }
+    if (/EROFS|read-only file system/i.test(error.message)) {
+      logger.error("Read-only filesystem error", { message: error.message, stack: error.stack });
+      return NextResponse.json(
+        {
+          message:
+            "Cannot write uploads on this server (read-only filesystem). Configure Cloudinary credentials for production uploads."
+        },
+        { status: 503 }
+      );
+    }
     if (isTransientDbError(error)) {
       logDbError("Transient database error after retries", error);
       return NextResponse.json(

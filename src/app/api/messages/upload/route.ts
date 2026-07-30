@@ -1,9 +1,10 @@
-import { promises as fs } from "node:fs";
 import path from "node:path";
 import { NextResponse } from "next/server";
 import { getSession } from "@/lib/auth";
-import { handleApiError, unauthorized } from "@/lib/api-error";
+import { handleApiError, unauthorized, HttpError } from "@/lib/api-error";
 import { isAuthorizedEmail } from "@/lib/authorized-users";
+import { storeChatUpload } from "@/lib/upload-storage";
+import { logger } from "@/lib/logger";
 
 const MAX_SIZE = 10 * 1024 * 1024;
 
@@ -35,14 +36,10 @@ const MIME_BY_EXT: Record<string, string> = {
 };
 
 export const runtime = "nodejs";
-
-function safeFilename(name: string) {
-  return name.replace(/[^a-zA-Z0-9._-]/g, "_");
-}
+export const dynamic = "force-dynamic";
 
 function extensionOf(name: string) {
-  const ext = path.extname(name).toLowerCase();
-  return ext;
+  return path.extname(name).toLowerCase();
 }
 
 export async function POST(req: Request) {
@@ -65,39 +62,66 @@ export async function POST(req: Request) {
       return NextResponse.json(
         {
           message:
-            "Unsupported file type. Images: JPG, JPEG, PNG, WEBP. Files: PDF, DOC, DOCX, XLSX, ZIP, TXT."
+            "Unsupported Media Type. Images: JPG, JPEG, PNG, WEBP. Files: PDF, DOC, DOCX, XLSX, ZIP, TXT."
         },
-        { status: 400 }
+        { status: 415 }
       );
     }
     if (file.size <= 0) {
       return NextResponse.json({ message: "Empty files are not allowed." }, { status: 400 });
     }
     if (file.size > MAX_SIZE) {
-      return NextResponse.json({ message: "File size exceeds 10MB limit." }, { status: 400 });
+      return NextResponse.json({ message: "File size exceeds 10MB limit." }, { status: 413 });
     }
 
     const bytes = await file.arrayBuffer();
     const buffer = Buffer.from(bytes);
     const resolvedExt = ext || (isImage ? ".jpg" : ".bin");
-    const filename = `${Date.now()}-${crypto.randomUUID()}-${safeFilename(path.basename(file.name, resolvedExt))}${resolvedExt}`;
-    const folder = path.join(process.cwd(), "public", "uploads", "messages");
-    await fs.mkdir(folder, { recursive: true });
-    const savePath = path.join(folder, filename);
-    await fs.writeFile(savePath, buffer);
+    const kind = isImage ? "image" : "file";
 
-    const publicUrl = `/uploads/messages/${filename}`;
+    const stored = await storeChatUpload({
+      buffer,
+      originalName: file.name,
+      mime: mime || MIME_BY_EXT[resolvedExt] || "application/octet-stream",
+      kind,
+      ext: resolvedExt
+    });
+
+    logger.info("Chat upload stored", {
+      email: session.email,
+      storage: stored.storage,
+      type: stored.type,
+      name: stored.name,
+      size: stored.size
+    });
+
     return NextResponse.json({
       attachment: {
         id: crypto.randomUUID(),
-        type: isImage ? "image" : "file",
-        url: publicUrl,
-        name: file.name,
-        size: file.size,
-        mime: mime || MIME_BY_EXT[resolvedExt] || "application/octet-stream"
+        type: stored.type,
+        url: stored.url,
+        name: stored.name,
+        size: stored.size,
+        mime: stored.mime,
+        createdAt: new Date().toISOString(),
+        storage: stored.storage
       }
     });
   } catch (error) {
+    if (error instanceof HttpError) {
+      return handleApiError(error);
+    }
+    const message = error instanceof Error ? error.message : String(error);
+    if (/EROFS|read-only file system/i.test(message)) {
+      logger.error("EROFS during chat upload", { message });
+      return NextResponse.json(
+        {
+          message:
+            "Cannot write uploads on this server (read-only filesystem). Configure Cloudinary credentials for production uploads."
+        },
+        { status: 503 }
+      );
+    }
     return handleApiError(error);
   }
 }

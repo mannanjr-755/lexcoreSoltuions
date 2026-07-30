@@ -5,7 +5,7 @@ const nextConfig: NextConfig = {
     ignoreDuringBuilds: true
   },
   // Ensure serverless/Netlify runtime can resolve Prisma engines
-  serverExternalPackages: ["@prisma/client", "prisma"],
+  serverExternalPackages: ["@prisma/client", "prisma", "cloudinary"],
   images: {
     remotePatterns: [
       {

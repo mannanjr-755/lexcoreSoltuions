@@ -11,8 +11,7 @@ import {
 } from "@/services/messages-realtime.service";
 import { HttpError } from "@/lib/api-error";
 import { logger } from "@/lib/logger";
-import { promises as fs } from "node:fs";
-import path from "node:path";
+import { deleteStoredAttachment, isAllowedAttachmentUrl } from "@/lib/upload-storage";
 
 export type MessageAttachmentType = "image" | "file";
 
@@ -242,11 +241,7 @@ export async function createMessage(input: CreateMessageInput): Promise<TeamMess
 
   const text = input.text.trim();
   const safeAttachments = (input.attachments ?? []).slice(0, 10).filter((attachment) => {
-    if (!attachment?.url || typeof attachment.url !== "string") return false;
-    return (
-      attachment.url.startsWith("/uploads/messages/") ||
-      attachment.url.startsWith("https://res.cloudinary.com/")
-    );
+    return isAllowedAttachmentUrl(attachment?.url);
   });
 
   if (!text && safeAttachments.length === 0) {
@@ -348,7 +343,7 @@ export async function deleteMessage(id: string, email: string) {
   }
 
   await prisma.chatMessage.delete({ where: { id } });
-  await removeLocalAttachments(existing.attachments.map((item) => item.url));
+  await Promise.all(existing.attachments.map((item) => deleteStoredAttachment(item.url)));
   publishMessageDeleted(id);
 }
 
@@ -365,7 +360,7 @@ export async function clearAllMessages(email: string) {
   });
 
   await prisma.chatMessage.deleteMany({ where: { workspaceId: WORKSPACE_ID } });
-  await removeLocalAttachments(attachments.map((item) => item.url));
+  await Promise.all(attachments.map((item) => deleteStoredAttachment(item.url)));
   publishMessagesCleared(WORKSPACE_ID);
   logger.info("Chat cleared by admin", { workspaceId: WORKSPACE_ID, email: normalized });
   return { cleared: true };
@@ -394,18 +389,6 @@ export async function markMessagesRead(email: string) {
   });
   publishMessageStatus(ids, "read");
   return { updated: ids.length };
-}
-
-async function removeLocalAttachments(urls: string[]) {
-  for (const url of urls) {
-    if (!url.startsWith("/uploads/messages/")) continue;
-    const absolute = path.join(process.cwd(), "public", url.replace(/^\//, ""));
-    try {
-      await fs.unlink(absolute);
-    } catch {
-      // File may already be gone; ignore.
-    }
-  }
 }
 
 export function listWorkspaceMembers() {
